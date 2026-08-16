@@ -1,0 +1,193 @@
+# tactic — Full Guide
+
+An agent that writes Lean 4 proofs. Give it a theorem; it loops
+(LLM draft → `lake build` → parse errors → patch) until the proof
+type-checks. Nothing counts as proved until Lean's kernel accepts it.
+
+---
+
+## 1. Install prerequisites
+
+### Lean 4 toolchain (elan + lake)
+
+```bash
+curl https://elan.lean-lang.org/elan-init.sh -sSf | sh
+source ~/.bashrc        # or restart your shell
+lean --version
+lake --version
+```
+
+### Mathlib (the math library — needed for ring/linarith/norm_num/Even/∑)
+
+```bash
+cd ~/Code/tactic/lean
+lake update             # fetches mathlib (pinned to v4.20.0 in lakefile.toml)
+lake exe cache get      # downloads prebuilt oleans (~10 min first time)
+lake build              # verify it compiles
+cd ..
+```
+
+> After this, each agent step compiles in seconds. Without the cache,
+> every build would recompile Mathlib from source (~1 hour).
+
+### Python agent
+
+```bash
+cd ~/Code/tactic
+pip install -e .        # installs the `tactic` CLI
+```
+
+---
+
+## 2. Configure the LLM
+
+The agent speaks the OpenAI-compatible API. Free Qwen options (tested):
+
+**TokenRouter (primary):**
+```bash
+export OPENAI_BASE_URL=https://api.tokenrouter.com/v1
+export OPENAI_API_KEY=<your tokenrouter key>
+export TACTIC_MODEL=qwen/qwen3.8-max-free
+```
+
+**HuggingFace endpoint (backup):**
+```bash
+export OPENAI_BASE_URL=https://g9hnto0u7lvbu837.us-east-2.aws.endpoints.huggingface.cloud/v1
+export OPENAI_API_KEY=not-needed
+export TACTIC_MODEL=Qwen/Qwen3.8-27B
+```
+
+Put these in `~/.bashrc` or a `.env` you source. Any OpenAI-compatible
+endpoint works (DashScope, OpenRouter, Groq, local Ollama/vLLM).
+
+---
+
+## 3. First proof
+
+```bash
+tactic prove "theorem sq_nonneg (x : ℤ) : 0 ≤ x ^ 2 := by sorry"
+```
+
+What happens:
+1. The statement is written to `lean/src/Tactic.lean` (with `import Mathlib` prepended)
+2. `lake build` runs → fails on `sorry`
+3. Diagnostics are parsed (file:line:col + surrounding source)
+4. The LLM gets the errors and returns a corrected file
+5. Repeat until `lake build` succeeds → **PROVED ∎**
+
+Expected output:
+```
+Proving:
+theorem sq_nonneg (x : ℤ) : 0 ≤ x ^ 2 := by sorry
+
+  [step 1] 1 diagnostics
+  [step 2] PROVED ∎
+
+proved=True steps=2 time=14.3s
+
+import Mathlib
+
+open BigOperators Nat Finset
+
+theorem sq_nonneg (x : ℤ) : 0 ≤ x ^ 2 := by
+  exact sq_nonneg x
+```
+
+---
+
+## 4. Run the benchmark
+
+100 graded theorems in `benchmark/problems.json`:
+
+| Tier | Count | Flavor |
+|---|---|---|
+| trivial | 20 | `add_comm`, `n - n = 0`, injectivity |
+| easy | 30 | algebra identities, parity, gcd, lists |
+| medium | 30 | Gauss sum, Pascal's rule, Bezout, mod arithmetic |
+| hard | 20 | `30 ∣ n⁵−n`, Cauchy–Schwarz, four squares, Fermat two-squares |
+
+```bash
+# Full run (~1–3 hours depending on model speed)
+tactic bench --max-steps 20 --report report.json
+
+# Just the trivial tier while you validate the loop:
+python3 -c "
+import json
+ps = json.load(open('benchmark/problems.json'))
+json.dump([p for p in ps if p['difficulty']=='trivial'],
+          open('benchmark/trivial.json','w'), indent=2)
+"
+tactic bench --problems benchmark/trivial.json --report report-trivial.json
+```
+
+`report.json` contains per-problem `{id, proved, steps, seconds}` plus the
+score. That score is your leaderboard entry.
+
+---
+
+## 5. How the loop works (and why it works)
+
+```
+statement ──► LLM drafts proof ──► lake build ──► type-checks? ──► PROVED ∎
+                    ▲                                │ no
+                    └── parsed diagnostics ◄─────────┘
+                        (error + source context)
+```
+
+The key insight: **Lean's compiler errors are machine-readable and precise.**
+The LLM doesn't need to "know" it's right — it just needs to fix the exact
+error Lean reports. This turns hallucination-prone generation into a
+convergent repair loop.
+
+Files:
+- `agent/loop.py` — the loop, history trimming, result tracking
+- `agent/lean.py` — `lake build` + diagnostic regex + source-context extraction
+- `agent/llm.py` — OpenAI-compatible client, ```lean block extraction
+- `agent/main.py` — CLI (`prove` / `bench`)
+
+---
+
+## 6. Tuning
+
+- `--max-steps N` — iteration budget per theorem (default 20). Weak models
+  need more; strong models usually finish in ≤5.
+- `TACTIC_MODEL` — bigger model = fewer steps, higher quality. For
+  proof-writing, 235B-class >> 27B-class >> 7B-class.
+- History is trimmed to the last 12 messages automatically to stay in context.
+- Temperature is fixed at 0.2 in `agent/llm.py` (proofs want determinism).
+
+---
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `lake: command not found` | `source ~/.bashrc` after elan install |
+| Build takes forever | You skipped `lake exe cache get` |
+| `unknown identifier 'Even'` etc. | Mathlib import missing — check `HEADER` in `agent/loop.py` |
+| LLM returns prose, no code block | Model too weak; or check `extract_lean_code` output |
+| API 429 / overloaded | Free tiers rate-limit; switch provider or add backoff |
+| Proof uses `sorry` and "passes" | Can't happen — `lake build` fails on `sorry` by default |
+
+---
+
+## 8. Roadmap
+
+- [x] Core loop + error parsing with source context
+- [x] 100-problem graded benchmark
+- [x] Mathlib wiring
+- [ ] Proof-trace logging + token/cost tracking per problem
+- [ ] Per-problem file isolation → parallel benchmark runs
+- [ ] Goal-state feedback (not just errors) via Lean LSP
+- [ ] MCP server wrapper (use tactic from any agent)
+- [ ] Public leaderboard + first results post
+
+---
+
+## 9. The play after it works
+
+1. Run the trivial tier → post the score publicly (X/HN/Lean Zulip)
+2. Iterate the loop, climb the tiers in public
+3. At ~60–70/100 you have a credible result → talk to FutureHouse,
+   Harmonic, Sakana, frontier-lab math teams
+4. Branch: job offer, seed round, or productize (proof-checking API)
