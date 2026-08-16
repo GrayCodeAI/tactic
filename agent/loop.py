@@ -1,7 +1,14 @@
-"""Core agent loop: draft → compile → parse errors → patch → repeat."""
+"""Core agent loop: draft → compile → parse errors → patch → repeat.
+
+Architecture: the agent NEVER lets the model rewrite the whole file. We own
+the theorem statement; the model only supplies the proof body (the tactics
+after `:= by`). This makes "prove a different theorem" structurally
+impossible — the statement is assembled by us, not the model.
+"""
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,10 +22,12 @@ TARGET = LEAN_DIR / "src" / "Tactic.lean"
 HEADER = "import Mathlib\n\nopen BigOperators Nat Finset\n\n"
 
 SYSTEM = """You are an expert Lean 4 theorem prover.
-You will be given a theorem statement and, after each attempt, the compiler
-diagnostics from `lake build`. Respond with the COMPLETE corrected Lean file
-in a single ```lean code block. Rules:
-- Keep the theorem name and statement exactly as given.
+You are given a theorem SIGNATURE (everything up to and including `:= by`)
+and, after each attempt, the compiler diagnostics from `lake build`.
+Respond with ONLY the tactic proof body — the lines that go after `:= by`,
+indented two spaces, in a single ```lean code block. Rules:
+- Do NOT restate, rename, or change the theorem. Only write the proof body.
+- Do NOT include the theorem signature in your reply, only the tactics.
 - Use only core Lean 4 / Mathlib tactics available in the project.
 - No `sorry`. The proof must fully type-check.
 - If diagnostics are shown, fix exactly those errors."""
@@ -34,31 +43,88 @@ class Result:
     history: list[str] = field(default_factory=list)
 
 
+def _split_signature(statement: str) -> str:
+    """Return the theorem signature up to and including `:= by`.
+
+    Accepts statements given with or without a trailing proof.
+    """
+    s = statement.strip()
+    m = re.search(r":=\s*by\b", s)
+    if m:
+        return s[: m.end()]
+    # No `:= by` present — append it.
+    return s + " := by"
+
+
+def _extract_body(text: str) -> str:
+    """Pull the proof body out of a model reply.
+
+    Prefers a ```lean block; strips any accidental theorem signature lines.
+    """
+    code = llm.extract_lean_code(text)
+    lines = []
+    for ln in code.splitlines():
+        stripped = ln.strip()
+        # Skip anything that restates a theorem or re-imports.
+        if re.match(r"^(theorem|lemma|example)\b", stripped):
+            continue
+        if re.match(r"^import\b", stripped):
+            continue
+        if re.match(r"^open\b", stripped):
+            continue
+        lines.append(ln)
+    body = "\n".join(lines).strip("\n")
+    # Normalize indentation to two spaces per tactic line.
+    out = []
+    for ln in body.splitlines():
+        if not ln.strip():
+            continue
+        out.append("  " + ln.strip())
+    return "\n".join(out)
+
+
 def prove(statement: str, max_steps: int = 20, verbose: bool = True) -> Result:
     t0 = time.time()
-    TARGET.write_text(HEADER + statement.strip() + "\n")
+    signature = _split_signature(statement)
     history: list[dict] = []
+    body = "  sorry"  # initial placeholder so the first build reports sorry
+
+    def write_file(b: str) -> None:
+        TARGET.write_text(HEADER + signature + "\n" + b + "\n")
+
+    write_file(body)
 
     for step in range(1, max_steps + 1):
         ok, output = lean.build(LEAN_DIR)
         if ok:
+            final = TARGET.read_text()
             if verbose:
                 print(f"  [step {step}] PROVED ∎")
-            return Result(statement, True, step, time.time() - t0, TARGET.read_text(), history)
+            return Result(statement, True, step, time.time() - t0, final, history)
 
         report = lean.error_report(LEAN_DIR, output)
         if verbose:
-            print(f"  [step {step}] {len(lean.parse_diagnostics(output))} diagnostics")
+            ndiag = len(lean.parse_diagnostics(output))
+            tag = f"{ndiag} diagnostics" if ndiag else "sorry / not proved"
+            print(f"  [step {step}] {tag}")
 
-        history.append({"role": "user", "content": f"Compiler diagnostics:\n{report}"})
+        user_msg = (
+            f"Theorem signature:\n{signature}\n\n"
+            f"Compiler diagnostics:\n{report}\n\n"
+            "Write ONLY the tactic proof body."
+        )
+        history.append({"role": "user", "content": user_msg})
         reply = llm.chat(SYSTEM, history)
-        code = llm.extract_lean_code(reply)
-        if code:
-            if "import" not in code:
-                code = HEADER + code
-            TARGET.write_text(code + "\n")
+        if reply.startswith("[LLM error"):
+            if verbose:
+                print(f"  [step {step}] {reply}")
+            history.append({"role": "assistant", "content": "(no response)"})
+            continue
+        new_body = _extract_body(reply)
+        if new_body:
+            body = new_body
+            write_file(body)
             history.append({"role": "assistant", "content": reply})
-        # keep history bounded
         if len(history) > 12:
             history = history[-12:]
 

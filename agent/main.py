@@ -6,6 +6,9 @@ import argparse
 import json
 import sys
 
+# Unbuffered stdout so background runs (nohup ... > log) show progress live.
+sys.stdout.reconfigure(line_buffering=True)
+
 from .loop import prove
 
 

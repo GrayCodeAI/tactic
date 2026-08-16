@@ -22,7 +22,12 @@ class Diagnostic:
 
 
 def build(lean_dir: Path, timeout: int = 120) -> tuple[bool, str]:
-    """Run `lake build` in lean_dir. Returns (success, raw_output)."""
+    """Run `lake build` in lean_dir.
+
+    Returns (proved, raw_output). proved means: exit code 0 AND no
+    declaration uses 'sorry' (lake treats sorry as a warning, not an error,
+    so exit code alone is not enough).
+    """
     proc = subprocess.run(
         ["lake", "build"],
         cwd=lean_dir,
@@ -31,7 +36,8 @@ def build(lean_dir: Path, timeout: int = 120) -> tuple[bool, str]:
         timeout=timeout,
     )
     output = (proc.stdout or "") + (proc.stderr or "")
-    return proc.returncode == 0, output
+    proved = proc.returncode == 0 and "declaration uses 'sorry'" not in output
+    return proved, output
 
 
 def parse_diagnostics(output: str) -> list[Diagnostic]:
