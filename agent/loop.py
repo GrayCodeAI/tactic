@@ -11,6 +11,9 @@ from . import lean, llm
 LEAN_DIR = Path(__file__).resolve().parent.parent / "lean"
 TARGET = LEAN_DIR / "src" / "Tactic.lean"
 
+# Prepended to every agent-written file so tactics/theorems are in scope.
+HEADER = "import Mathlib\n\nopen BigOperators Nat Finset\n\n"
+
 SYSTEM = """You are an expert Lean 4 theorem prover.
 You will be given a theorem statement and, after each attempt, the compiler
 diagnostics from `lake build`. Respond with the COMPLETE corrected Lean file
@@ -33,7 +36,7 @@ class Result:
 
 def prove(statement: str, max_steps: int = 20, verbose: bool = True) -> Result:
     t0 = time.time()
-    TARGET.write_text(statement.strip() + "\n")
+    TARGET.write_text(HEADER + statement.strip() + "\n")
     history: list[dict] = []
 
     for step in range(1, max_steps + 1):
@@ -51,6 +54,8 @@ def prove(statement: str, max_steps: int = 20, verbose: bool = True) -> Result:
         reply = llm.chat(SYSTEM, history)
         code = llm.extract_lean_code(reply)
         if code:
+            if "import" not in code:
+                code = HEADER + code
             TARGET.write_text(code + "\n")
             history.append({"role": "assistant", "content": reply})
         # keep history bounded

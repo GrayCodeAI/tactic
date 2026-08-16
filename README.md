@@ -11,10 +11,10 @@ Scaffold. Core loop, error parsing, and benchmark harness in place.
 ## Setup
 
 ```bash
-# 1. Lean toolchain (once)
+# 1. Lean toolchain + Mathlib (once; Mathlib fetch takes a while)
 curl https://elan.lean-lang.org/elan-init.sh -sSf | sh
 source ~/.bashrc
-lake --version
+cd lean && lake update && lake exe cache get && lake build && cd ..
 
 # 2. Python deps
 pip install -e .
@@ -73,6 +73,7 @@ benchmark/      fixed theorem set + runner
 
 ## Roadmap
 
+- [x] 100-problem graded benchmark (benchmark/problems.json)
 - [ ] Better error-context extraction (surrounding source, not just line:col)
 - [ ] Per-problem Lean file isolation (parallel runs)
 - [ ] Proof trace logging + cost tracking
