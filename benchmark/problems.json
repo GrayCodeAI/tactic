@@ -1,0 +1,52 @@
+[
+  {
+    "id": "add_comm_nat",
+    "difficulty": "trivial",
+    "statement": "theorem add_comm_nat (a b : ℕ) : a + b = b + a := by\n  sorry"
+  },
+  {
+    "id": "mul_comm_nat",
+    "difficulty": "trivial",
+    "statement": "theorem mul_comm_nat (a b : ℕ) : a * b = b * a := by\n  sorry"
+  },
+  {
+    "id": "sq_nonneg_int",
+    "difficulty": "easy",
+    "statement": "theorem sq_nonneg_int (x : ℤ) : 0 ≤ x ^ 2 := by\n  sorry"
+  },
+  {
+    "id": "nat_sub_self",
+    "difficulty": "trivial",
+    "statement": "theorem nat_sub_self (n : ℕ) : n - n = 0 := by\n  sorry"
+  },
+  {
+    "id": "succ_injective",
+    "difficulty": "trivial",
+    "statement": "theorem succ_injective (a b : ℕ) : Nat.succ a = Nat.succ b → a = b := by\n  sorry"
+  },
+  {
+    "id": "diff_of_squares",
+    "difficulty": "easy",
+    "statement": "theorem diff_of_squares (a b : ℤ) : a ^ 2 - b ^ 2 = (a - b) * (a + b) := by\n  sorry"
+  },
+  {
+    "id": "div_three_consecutive",
+    "difficulty": "medium",
+    "statement": "theorem div_three_consecutive (n : ℕ) : 3 ∣ n * (n + 1) * (n + 2) := by\n  sorry"
+  },
+  {
+    "id": "even_square_implies_even",
+    "difficulty": "medium",
+    "statement": "theorem even_square_implies_even (n : ℕ) : (∃ k, n ^ 2 = 2 * k) → ∃ k, n = 2 * k := by\n  sorry"
+  },
+  {
+    "id": "sum_sq_ge_prod",
+    "difficulty": "easy",
+    "statement": "theorem sum_sq_ge_prod (a b : ℤ) : 2 * a * b ≤ a ^ 2 + b ^ 2 := by\n  sorry"
+  },
+  {
+    "id": "nat_le_of_mul_le",
+    "difficulty": "medium",
+    "statement": "theorem nat_le_of_mul_le (a b c : ℕ) (h : 0 < c) : c * a ≤ c * b → a ≤ b := by\n  sorry"
+  }
+]

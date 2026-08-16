@@ -1,0 +1,6 @@
+name = "tactic"
+version = "0.1.0"
+defaultTargets = ["Tactic"]
+
+[[lean_lib]]
+name = "Tactic"
