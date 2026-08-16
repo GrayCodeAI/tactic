@@ -21,6 +21,21 @@ TARGET = LEAN_DIR / "src" / "Tactic.lean"
 # Prepended to every agent-written file so tactics/theorems are in scope.
 HEADER = "import Mathlib\n\nopen BigOperators Nat Finset\n\n"
 
+# One-shot "hammers" tried before spending any LLM tokens. Each costs one
+# `lake build` (~3s) and solves a surprising fraction of problems outright.
+HAMMERS = [
+    "ring",
+    "omega",
+    "linarith",
+    "nlinarith",
+    "simp",
+    "norm_num",
+    "decide",
+    "aesop",
+    "tauto",
+    "positivity",
+]
+
 SYSTEM = """You are an expert Lean 4 theorem prover.
 You are given a theorem SIGNATURE (everything up to and including `:= by`)
 and, after each attempt, the compiler diagnostics from `lake build`.
@@ -28,6 +43,9 @@ Respond with ONLY the tactic proof body — the lines that go after `:= by`,
 indented two spaces, in a single ```lean code block. Rules:
 - Do NOT restate, rename, or change the theorem. Only write the proof body.
 - Do NOT include the theorem signature in your reply, only the tactics.
+- Prefer hammers first: `ring`, `omega`, `linarith`, `nlinarith`, `simp`,
+  `norm_num`, `positivity`, `aesop`. Only write manual induction/case
+  analysis if hammers cannot close the goal.
 - Use only core Lean 4 / Mathlib tactics available in the project.
 - No `sorry`. The proof must fully type-check.
 - If diagnostics are shown, fix exactly those errors."""
@@ -87,11 +105,23 @@ def prove(statement: str, max_steps: int = 20, verbose: bool = True) -> Result:
     t0 = time.time()
     signature = _split_signature(statement)
     history: list[dict] = []
-    body = "  sorry"  # initial placeholder so the first build reports sorry
 
     def write_file(b: str) -> None:
         TARGET.write_text(HEADER + signature + "\n" + b + "\n")
 
+    # ---- Hammer pre-pass: try one-shot tactics before spending LLM tokens.
+    for i, hammer in enumerate(HAMMERS, 1):
+        write_file(f"  {hammer}")
+        ok, _ = lean.build(LEAN_DIR)
+        if ok:
+            final = TARGET.read_text()
+            if verbose:
+                print(f"  [hammer {i}/{len(HAMMERS)}] PROVED ∎ by `{hammer}`")
+            return Result(statement, True, i, time.time() - t0, final, history)
+    if verbose:
+        print(f"  [hammer] no one-shot tactic worked, starting LLM loop")
+
+    body = "  sorry"  # initial placeholder so the first build reports sorry
     write_file(body)
 
     for step in range(1, max_steps + 1):

@@ -1,0 +1,126 @@
+{
+  "score": 20,
+  "total": 20,
+  "results": [
+    {
+      "id": "add_comm_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.7
+    },
+    {
+      "id": "mul_comm_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.2
+    },
+    {
+      "id": "add_assoc_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.7
+    },
+    {
+      "id": "mul_assoc_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.5
+    },
+    {
+      "id": "add_zero_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 11.2
+    },
+    {
+      "id": "mul_one_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 10.1
+    },
+    {
+      "id": "zero_mul_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.9
+    },
+    {
+      "id": "nat_sub_self",
+      "proved": true,
+      "steps": 2,
+      "seconds": 18.6
+    },
+    {
+      "id": "succ_injective",
+      "proved": true,
+      "steps": 2,
+      "seconds": 21.4
+    },
+    {
+      "id": "add_right_cancel_nat",
+      "proved": true,
+      "steps": 2,
+      "seconds": 19.9
+    },
+    {
+      "id": "mul_add_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.7
+    },
+    {
+      "id": "sq_eq_mul",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.1
+    },
+    {
+      "id": "two_mul_nat",
+      "proved": true,
+      "steps": 1,
+      "seconds": 9.0
+    },
+    {
+      "id": "nat_add_sub_cancel",
+      "proved": true,
+      "steps": 2,
+      "seconds": 20.0
+    },
+    {
+      "id": "int_add_neg_self",
+      "proved": true,
+      "steps": 1,
+      "seconds": 8.8
+    },
+    {
+      "id": "int_neg_one_mul",
+      "proved": true,
+      "steps": 1,
+      "seconds": 8.9
+    },
+    {
+      "id": "nat_le_succ",
+      "proved": true,
+      "steps": 2,
+      "seconds": 17.8
+    },
+    {
+      "id": "nat_lt_succ",
+      "proved": true,
+      "steps": 2,
+      "seconds": 20.6
+    },
+    {
+      "id": "prop_or_self",
+      "proved": true,
+      "steps": 5,
+      "seconds": 44.5
+    },
+    {
+      "id": "not_not_self_eq",
+      "proved": true,
+      "steps": 2,
+      "seconds": 20.9
+    }
+  ]
+}
