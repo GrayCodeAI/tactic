@@ -179,7 +179,8 @@ Slash commands in the prompt bar (complete with `ctrl+space`):
 /prove [<statement>]        prove a custom theorem (editor modal or inline)
 /workers <n>                parallel proof workers
 /resume                     browse sessions (picker) · replay one
-/branch <session> [turn]    re-run a theorem from an earlier turn
+/branch <session> [turn]    re-run a theorem from an earlier turn (model summarizes
+                            the old branch first; TACTIC_BRANCH_SUMMARY=0 disables)
 /name <new name>            rename the most recent session
 /export <path>              save the session transcript (html/jsonl by suffix)
 /prompts                    pick a markdown prompt template to apply

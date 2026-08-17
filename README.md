@@ -118,7 +118,7 @@ agent/              the agent (Python)
   tui.py            Textual TUI (problems, live trace, replay, commands)
   main.py           CLI (prove / bench / tui / mcp / sessions / leaderboard)
 benchmark/          fixed theorem set + runner + merge_reports.py
-tests/              pytest suite (103 tests)
+tests/              pytest suite (209 tests)
 leaderboard.json    local score history (tactic leaderboard)
 ```
 
@@ -133,8 +133,12 @@ leaderboard.json    local score history (tactic leaderboard)
 - [x] Leaderboard (local: `tactic leaderboard`; public site TBD)
 - [x] TUI: custom prove, session replay, parallel workers, Errors panel
 - [x] Clipboard (tau port: pyperclip + OSC-52 fallback, selection-aware)
-- [x] Slash commands + completions (tau pattern, 19 built-ins) + ctrl+k palette
-- [x] Session resume + branching (`/branch <session> [turn]`)
+- [x] Slash commands + completions (tau pattern, 21 built-ins) + ctrl+k palette
+- [x] Session resume + branching (`/branch <session> [turn]`, model branch summaries)
+- [x] File drops into the prompt bar (paths quoted/URI-decoded, tau port)
+- [x] Session export (`/export`, JSONL + self-contained HTML transcript)
+- [x] Project trust gating (`.tactic` protected resources, modal + env policy)
+- [x] Prompt templates (`/prompts` picker, slash expansion, project override)
 - [x] History compaction (failed-attempts summary)
 - [x] Themes + terminal-title chrome + OSC 9/99 completion notification (tau pattern)
 - [x] Queued prompts while running (ctrl+e to edit), /new /compact /name (tau pattern)
