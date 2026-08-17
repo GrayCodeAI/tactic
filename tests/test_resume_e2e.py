@@ -113,6 +113,22 @@ async def test_branch_at_keeps_only_first_turn(fake_llm, sessions):
 
 
 @pytest.mark.anyio
+async def test_branch_summary_seeded_before_history(fake_llm, sessions):
+    """A model branch summary is prepended as its own user turn — the seeded
+    history must still be visible after it (tau's preamble seeding)."""
+    from agent.branch_summary import BRANCH_SUMMARY_PREAMBLE
+
+    r = loop.prove(STATEMENT, max_steps=3, verbose=False, problem_id="branch2",
+                   resume_from=SEED_SESSION_ID, branch_at=1, goal_feedback=False,
+                   branch_summary="## Goal\nfinish the induction")
+    assert r.history[0]["role"] == "user"
+    assert r.history[0]["content"].startswith(BRANCH_SUMMARY_PREAMBLE)
+    assert "finish the induction" in r.history[0]["content"]
+    assert "fake report" in r.history[1]["content"]  # seeded turn still present
+    assert r.proved is True
+
+
+@pytest.mark.anyio
 async def test_unknown_session_id_falls_through(fake_llm, sessions):
     """A missing session is ignored; the run proceeds from scratch."""
     r = loop.prove(STATEMENT, max_steps=3, verbose=False, problem_id="noid",

@@ -137,6 +137,7 @@ def prove(
     record_session: bool = True,
     resume_from: str | None = None,
     branch_at: int | None = None,
+    branch_summary: str | None = None,
     skip_hammers: bool = False,
 ) -> Result:
     t0 = time.time()
@@ -253,6 +254,16 @@ def prove(
                 seed = seed[: max(0, branch_at) * 2]
             if seed:
                 history = seed[:12]
+                if branch_summary:
+                    # Context for a continuation from an earlier point: what
+                    # the rest of the previous run already did (tau's
+                    # BRANCH_SUMMARY_PREAMBLE seeding).
+                    from .branch_summary import BRANCH_SUMMARY_PREAMBLE
+
+                    history.insert(0, {
+                        "role": "user",
+                        "content": f"{BRANCH_SUMMARY_PREAMBLE}\n{branch_summary}",
+                    })
                 last_asst = next(
                     (m["content"] for m in reversed(seed)
                      if m["role"] == "assistant" and m["content"].strip()

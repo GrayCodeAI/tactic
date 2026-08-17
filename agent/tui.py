@@ -1055,12 +1055,23 @@ class TacticApp(App):
         pid = start.get("problem_id") or "branch"
 
         def worker() -> None:
+            summary = None
+            if branch_at is not None and os.environ.get("TACTIC_BRANCH_SUMMARY", "1") != "0":
+                from .branch_summary import summarize_branch_with_model
+
+                summary = summarize_branch_with_model(records)
+                if summary:
+                    self._log("[dim]branch summary generated[/dim]")
+                else:
+                    self._log("[dim]branch summary unavailable — continuing with "
+                              "recorded history only[/dim]")
             result = prove(
                 statement, max_steps=20, verbose=False,
                 problem_id=pid, goal_feedback=True,
                 on_event=lambda ev: self._probe_event(pid, ev),
                 should_stop=lambda: self._stop_flag,
                 resume_from=session_id, branch_at=branch_at,
+                branch_summary=summary,
             )
             status = ("proved" if result.proved
                       else "stopped" if result.stopped else "failed")
