@@ -1,6 +1,7 @@
 # Results post — drafts (X / HN / Lean Zulip)
 
-Numbers to fill in at post time: FINAL_SCORE / FINAL_FLIPS / FINAL_WALL_TIME
+Final: score 68/100 · flips dvd_sub_int, gcd_mul_right · wall ~7h first run
+(02:30–09:36 UTC, 4 workers) + ~5.3h retry pass, $0 total.
 
 ## X (short, 280 chars)
 
