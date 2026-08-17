@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +23,32 @@ class Diagnostic:
     message: str
 
 
+def _run_group(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str]:
+    """Run cmd in a new process group; on timeout KILL the whole group.
+
+    subprocess.run(timeout=...) only kills the direct child — grandchildren
+    (lake spawns lean) keep stdout open, so its internal drain hangs forever.
+    Running in its own session and using killpg() avoids that.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return proc.returncode, (stdout or b"").decode(errors="replace") + (stderr or b"").decode(errors="replace")
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except OSError:
+            proc.kill()
+        proc.wait()
+        return -1, f"(process group killed: timeout after {timeout}s)"
+
+
 def build(lean_dir: Path, timeout: int = 120) -> tuple[bool, str]:
     """Run `lake build` in lean_dir.
 
@@ -28,16 +56,8 @@ def build(lean_dir: Path, timeout: int = 120) -> tuple[bool, str]:
     declaration uses 'sorry' (lake treats sorry as a warning, not an error,
     so exit code alone is not enough).
     """
-    proc = subprocess.run(
-        ["lake", "build"],
-        cwd=lean_dir,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    output = (proc.stdout or "") + (proc.stderr or "")
-    proved = proc.returncode == 0 and "declaration uses 'sorry'" not in output
+    returncode, output = _run_group(["lake", "build"], lean_dir, timeout)
+    proved = returncode == 0 and "declaration uses 'sorry'" not in output
     return proved, output
 
 
@@ -48,16 +68,8 @@ def check_file(lean_file: Path, lean_dir: Path, timeout: int = 60) -> tuple[bool
     Returns (proved, raw_output). proved means: exit code 0 AND no
     declaration uses 'sorry'.
     """
-    proc = subprocess.run(
-        ["lake", "env", "lean", str(lean_file)],
-        cwd=lean_dir,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    output = (proc.stdout or "") + (proc.stderr or "")
-    proved = proc.returncode == 0 and "declaration uses 'sorry'" not in output
+    returncode, output = _run_group(["lake", "env", "lean", str(lean_file)], lean_dir, timeout)
+    proved = returncode == 0 and "declaration uses 'sorry'" not in output
     return proved, output
 
 
