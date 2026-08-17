@@ -63,11 +63,14 @@ class SessionManager:
         self.dir.mkdir(parents=True, exist_ok=True)
         lines: list[str] = []
         if self.index_path.exists():
-            lines = [
-                line
-                for line in self.index_path.read_text(encoding="utf-8").splitlines()
-                if line.strip() and json.loads(line).get("id") != record.id
-            ]
+            for line in self.index_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    if json.loads(line).get("id") != record.id:
+                        lines.append(line)
+                except json.JSONDecodeError:
+                    continue
         lines.append(record.to_json())
         self.index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
