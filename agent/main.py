@@ -107,7 +107,7 @@ def cmd_tui(args: argparse.Namespace) -> int:
     except ImportError:
         print("TUI requires the optional 'textual' dependency: pip install 'tactic[tui]'")
         return 1
-    tui_main()
+    tui_main(parallel=args.parallel)
     return 0
 
 
@@ -240,6 +240,8 @@ def cli() -> None:
     m.set_defaults(fn=cmd_mcp)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
+    t.add_argument("-p", "--parallel", type=int, default=1,
+                   help="number of parallel proof workers (default=1)")
     t.set_defaults(fn=cmd_tui)
 
     s = sub.add_parser("sessions", help="list/inspect recorded proof sessions (~/.tactic/sessions)")
