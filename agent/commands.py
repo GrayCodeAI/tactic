@@ -1,0 +1,339 @@
+"""Slash command registry for tactic (ported from huggingface/tau commands.py).
+
+Same architecture as tau: a `CommandRegistry` of `SlashCommand` records whose
+handlers are *pure parsers* — they inspect a `CommandContext` and return a
+frozen `CommandResult` of flags. They never mutate app state. The frontend
+(TUI, or CLI one day) inspects the flags and performs the side effects.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Protocol
+
+
+class CommandSession(Protocol):
+    """Session attributes available to slash-command handlers."""
+
+    @property
+    def model(self) -> str: ...
+
+    @property
+    def session_dir(self) -> Path: ...
+
+    @property
+    def session_ids(self) -> Sequence[str]: ...
+
+    @property
+    def problems_total(self) -> int: ...
+
+    @property
+    def counts(self) -> dict[str, int]: ...
+
+    @property
+    def n_workers(self) -> int: ...
+
+    @property
+    def max_workers(self) -> int: ...
+
+    @property
+    def is_running(self) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CommandResult:
+    """Result of handling a slash command. The frontend acts on flags."""
+
+    handled: bool
+    exit_requested: bool = False
+    clear_requested: bool = False
+    stop_requested: bool = False
+    run_requested: bool = False
+    prove_requested: bool = False
+    prove_statement: str | None = None
+    workers_requested: int | None = None
+    sessions_picker_requested: bool = False
+    replay_session_id: str | None = None
+    leaderboard_requested: bool = False
+    export_requested: bool = False
+    export_destination: Path | None = None
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CommandContext:
+    """Runtime context passed to slash-command handlers."""
+
+    session: CommandSession
+    registry: CommandRegistry
+    text: str
+    name: str
+    args: str
+
+
+CommandHandler = Callable[[CommandContext], CommandResult]
+
+
+@dataclass(frozen=True, slots=True)
+class SlashCommand:
+    """One slash command: identity + help text + pure handler."""
+
+    name: str
+    description: str
+    usage: str
+    handler: CommandHandler
+    aliases: tuple[str, ...] = ()
+    search_terms: tuple[str, ...] = ()
+
+
+class CommandRegistry:
+    """Name/alias dispatch table for slash commands (tau parity)."""
+
+    def __init__(self) -> None:
+        self._commands: dict[str, SlashCommand] = {}
+        self._aliases: dict[str, str] = {}
+
+    def register(self, command: SlashCommand) -> None:
+        if command.name in self._commands:
+            raise ValueError(f"duplicate command: {command.name}")
+        self._commands[command.name] = command
+        for alias in command.aliases:
+            if alias in self._aliases or alias in self._commands:
+                raise ValueError(f"duplicate command alias: {alias}")
+            self._aliases[alias] = command.name
+
+    def get(self, name: str) -> SlashCommand | None:
+        return self._commands.get(self._aliases.get(name, name))
+
+    def list_commands(self) -> list[SlashCommand]:
+        return sorted(self._commands.values(), key=lambda c: c.name)
+
+    def execute(self, session: CommandSession, text: str) -> CommandResult:
+        """Parse and run one input line.
+
+        Returns CommandResult(handled=False) for anything that is not a known
+        slash command so the frontend can fall through to its default path.
+        """
+        stripped = text.strip()
+        if not stripped.startswith("/"):
+            return CommandResult(handled=False)
+        name, args = self._parse_command(stripped)
+        command = self.get(name)
+        if command is None:
+            return CommandResult(
+                handled=False,
+                message=f"Unknown command: /{name}. Try /help.",
+            )
+        context = CommandContext(
+            session=session,
+            registry=self,
+            text=stripped,
+            name=name,
+            args=args,
+        )
+        return command.handler(context)
+
+    @staticmethod
+    def _parse_command(text: str) -> tuple[str, str]:
+        body = text.lstrip("/").strip()
+        if not body:
+            return "", ""
+        parts = body.split(None, 1)
+        return parts[0], (parts[1].strip() if len(parts) > 1 else "")
+
+
+def create_default_command_registry() -> CommandRegistry:
+    """Register the built-in command set."""
+    registry = CommandRegistry()
+    registry.register(SlashCommand(
+        name="quit", description="Exit the TUI.",
+        usage="/quit", handler=_quit_command,
+        aliases=("exit", "q"), search_terms=("close",),
+    ))
+    registry.register(SlashCommand(
+        name="help", description="List available commands.",
+        usage="/help", handler=_help_command,
+        search_terms=("commands",),
+    ))
+    registry.register(SlashCommand(
+        name="hotkeys", description="Show common keyboard shortcuts.",
+        usage="/hotkeys", handler=_hotkeys_command,
+    ))
+    registry.register(SlashCommand(
+        name="status", description="Show run/model/worker status.",
+        usage="/status", handler=_status_command,
+        search_terms=("info", "session"),
+    ))
+    registry.register(SlashCommand(
+        name="clear", description="Clear the log panel.",
+        usage="/clear", handler=_clear_command,
+    ))
+    registry.register(SlashCommand(
+        name="prove", description="Prove a custom theorem (opens editor, or inline with args).",
+        usage="/prove [statement]", handler=_prove_command,
+        search_terms=("custom", "run theorem"),
+    ))
+    registry.register(SlashCommand(
+        name="run", description="Run remaining pending problems.",
+        usage="/run", handler=_run_command,
+        search_terms=("rest", "remaining", "benchmark"),
+    ))
+    registry.register(SlashCommand(
+        name="stop", description="Stop after the current step.",
+        usage="/stop", handler=_stop_command,
+        search_terms=("abort", "cancel"),
+    ))
+    registry.register(SlashCommand(
+        name="workers", description="Set the number of parallel proof workers (1–N).",
+        usage="/workers [n]", handler=_workers_command,
+        search_terms=("parallel",),
+    ))
+    registry.register(SlashCommand(
+        name="resume", description="Replay a recorded session (picker with no args).",
+        usage="/resume [session-id]", handler=_resume_command,
+        search_terms=("sessions", "replay", "history"),
+    ))
+    registry.register(SlashCommand(
+        name="export", description="Export the log panel to a file.",
+        usage="/export <path>", handler=_export_command,
+        search_terms=("save",),
+    ))
+    registry.register(SlashCommand(
+        name="leaderboard", description="Show the local leaderboard.",
+        usage="/leaderboard", handler=_leaderboard_command,
+        aliases=("board",), search_terms=("scores",),
+    ))
+    registry.register(SlashCommand(
+        name="model", description="Show the active model.",
+        usage="/model", handler=_model_command,
+    ))
+    registry.register(SlashCommand(
+        name="system", description="Show the proof loop's system prompt.",
+        usage="/system", handler=_system_command,
+    ))
+    return registry
+
+
+# --------------------------------------------------------------------------- handlers
+
+
+def _quit_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, exit_requested=True)
+
+
+def _clear_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, clear_requested=True)
+
+
+def _stop_command(context: CommandContext) -> CommandResult:
+    if not context.session.is_running:
+        return CommandResult(handled=True, message="Nothing is running.")
+    return CommandResult(handled=True, stop_requested=True,
+                         message="Stopping after the current step…")
+
+
+def _run_command(context: CommandContext) -> CommandResult:
+    if context.session.is_running:
+        return CommandResult(handled=True, message="Already running — use /stop first.")
+    return CommandResult(handled=True, run_requested=True)
+
+
+def _prove_command(context: CommandContext) -> CommandResult:
+    if context.session.is_running:
+        return CommandResult(handled=True, message="Already running — use /stop first.")
+    if context.args:
+        return CommandResult(handled=True, prove_requested=True,
+                             prove_statement=context.args)
+    return CommandResult(handled=True, prove_requested=True)
+
+
+def _workers_command(context: CommandContext) -> CommandResult:
+    session = context.session
+    if not context.args:
+        return CommandResult(
+            handled=True,
+            message=f"Parallel workers: {session.n_workers} (max {session.max_workers}). "
+                    f"Usage: /workers <n>",
+        )
+    try:
+        n = int(context.args)
+    except ValueError:
+        return CommandResult(handled=True, message="Usage: /workers <n>")
+    if not 1 <= n <= session.max_workers:
+        return CommandResult(
+            handled=True,
+            message=f"Workers must be between 1 and {session.max_workers}.",
+        )
+    return CommandResult(handled=True, workers_requested=n,
+                         message=f"Workers set to {n}.")
+
+
+def _resume_command(context: CommandContext) -> CommandResult:
+    if context.args:
+        if context.args not in set(context.session.session_ids):
+            return CommandResult(handled=True,
+                                 message=f"Session not found: {context.args}")
+        return CommandResult(handled=True, replay_session_id=context.args)
+    return CommandResult(handled=True, sessions_picker_requested=True)
+
+
+def _export_command(context: CommandContext) -> CommandResult:
+    if not context.args:
+        return CommandResult(handled=True, message="Usage: /export <path>")
+    return CommandResult(handled=True, export_requested=True,
+                         export_destination=Path(context.args))
+
+
+def _leaderboard_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, leaderboard_requested=True)
+
+
+def _status_command(context: CommandContext) -> CommandResult:
+    s = context.session
+    counts = s.counts
+    done = counts.get("proved", 0) + counts.get("failed", 0) + counts.get("stopped", 0)
+    state = "running" if s.is_running else "idle"
+    lines = [
+        f"model:   {s.model}",
+        f"state:   {state} · workers={s.n_workers}",
+        (f"proved:  {counts.get('proved', 0)} · failed {counts.get('failed', 0)} · "
+         f"stopped {counts.get('stopped', 0)}"),
+        f"progress {done}/{s.problems_total}",
+        f"sessions {s.session_dir} ({len(s.session_ids)} recorded)",
+    ]
+    return CommandResult(handled=True, message="\n".join(lines))
+
+
+def _model_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, message=f"Model: {context.session.model}")
+
+
+def _system_command(context: CommandContext) -> CommandResult:
+    from .loop import SYSTEM
+
+    return CommandResult(handled=True, message=SYSTEM)
+
+
+def _hotkeys_command(context: CommandContext) -> CommandResult:
+    lines = [
+        "p  prove selected problem",
+        "c  prove a custom theorem",
+        "r  run remaining problems",
+        "w  set parallel workers",
+        "s  stop after the current step",
+        "v  browse/replay recorded sessions",
+        "l  show leaderboard",
+        "q  quit",
+        "",
+        "slash commands work in the prompt: /help lists them",
+    ]
+    return CommandResult(handled=True, message="\n".join(lines))
+
+
+def _help_command(context: CommandContext) -> CommandResult:
+    commands = context.registry.list_commands()
+    width = max(len(c.usage) for c in commands)
+    lines = [f"{c.usage:<{width}}  {c.description}" for c in commands]
+    return CommandResult(handled=True, message="\n".join(lines))

@@ -42,6 +42,8 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from . import session as sess
+from .autocomplete import command_completions
+from .commands import CommandResult, create_default_command_registry
 from .loop import prove
 
 REPO = Path(__file__).resolve().parent.parent
@@ -86,8 +88,10 @@ class SelectableRichLog(RichLog):
     def write(self, content, *args, **kwargs):
         if isinstance(content, Text):
             plain = content.plain
+        elif isinstance(content, str) and self.markup:
+            plain = Text.from_markup(content).plain
         else:
-            plain = str(content)
+            plain = escape(str(content)) if not isinstance(content, str) else content
         self._plain_lines.extend(plain.splitlines() or [""])
         return super().write(content, *args, **kwargs)
 
@@ -207,6 +211,39 @@ class LeaderboardScreen(ModalScreen[None]):
                           tiers, e.get("date", ""))
 
 
+class MessageScreen(ModalScreen[None]):
+    """Output modal for slash commands (tau's CommandOutputScreen analogue).
+
+    Its content is the copy target regardless of the global auto-copy setting
+    — same rule tau applies to the session modal.
+    """
+
+    auto_copy_selection: bool = True
+
+    CSS = """
+    MessageScreen { align: center middle; }
+    #command-output {
+        width: 76; max-width: 90; height: auto; max-height: 70%;
+        background: $panel; border: round $primary; padding: 1 2;
+    }
+    #command-output-body { height: auto; }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("q", "dismiss(None)", "Close"),
+        Binding("escape", "dismiss(None)", "Close"),
+    ]
+
+    def __init__(self, title: str, body: str) -> None:
+        super().__init__()
+        self._title = title
+        self._body = body
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="command-output"):
+            yield Static(f"[bold]{self._title}[/bold]")
+            yield Static(self._body, id="command-output-body")
+
+
 class ProveScreen(ModalScreen[str | None]):
     """Free-form theorem input."""
 
@@ -270,7 +307,7 @@ class WorkersScreen(ModalScreen[int | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="workers-box"):
             yield Static(f"parallel workers [dim](1–{MAX_WORKERS})[/dim]")
-            yield Input(value=str(self.app.workers), type="integer", id="workers-input")
+            yield Input(value=str(self.app.n_workers), type="integer", id="workers-input")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         try:
@@ -403,18 +440,25 @@ class TacticApp(App):
     CSS = """
     #main { height: 1fr; }
     #problems { width: 46; border-right: solid $primary; }
+    #prompt-box { dock: bottom; height: auto; padding: 0 1; }
+    #prompt { height: 1; }
+    #prompt-completions { height: auto; max-height: 9; display: none; background: $panel; }
     #status-bar { dock: bottom; height: 1; background: $panel; padding: 0 1; }
     #board-table { width: 100%; height: 100%; }
     #side { width: 1fr; }
     """
+    # Non-priority single-letter bindings so they don't hijack typing in the
+    # prompt bar: they still fire when the problem list is focused because
+    # ListView does not consume plain letters, but an Input widget does.
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("p", "prove_selected", "Prove", priority=True),
-        Binding("c", "custom_prove", "Custom", priority=True),
-        Binding("r", "run_remaining", "Run rest", priority=True),
-        Binding("w", "set_workers", "Workers", priority=True),
-        Binding("s", "stop", "Stop", priority=True),
-        Binding("v", "sessions", "Sessions", priority=True),
-        Binding("l", "leaderboard", "Leaderboard", priority=True),
+        Binding("p", "prove_selected", "Prove"),
+        Binding("c", "custom_prove", "Custom"),
+        Binding("r", "run_remaining", "Run rest"),
+        Binding("w", "set_workers", "Workers"),
+        Binding("s", "stop", "Stop"),
+        Binding("v", "sessions", "Sessions"),
+        Binding("l", "leaderboard", "Leaderboard"),
+        Binding("ctrl+space", "complete_prompt", show=False),
         Binding("q", "quit_app", "Quit"),
     ]
 
@@ -428,6 +472,33 @@ class TacticApp(App):
         self._run_active = False
         self._custom_seq = 0
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
+        self.command_registry = create_default_command_registry()
+
+    # ------------------------------------------------------ CommandSession protocol
+
+    @property
+    def model(self) -> str:
+        return os.environ.get("TACTIC_MODEL", "gpt-4o (default)")
+
+    @property
+    def session_dir(self) -> Path:
+        return sess.sessions_dir()
+
+    @property
+    def session_ids(self) -> list[str]:
+        return [sp.stem for sp in sess.list_sessions()]
+
+    @property
+    def problems_total(self) -> int:
+        return len(self.problems)
+
+    @property
+    def is_running(self) -> bool:
+        return self._run_active
+
+    @property
+    def max_workers(self) -> int:
+        return MAX_WORKERS
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -443,6 +514,9 @@ class TacticApp(App):
                     yield SelectableRichLog(id="errors", wrap=False, markup=True)
                 with TabPane("Proof", id="tab-proof"):
                     yield SelectableRichLog(id="proof", wrap=False, markup=True)
+        with Vertical(id="prompt-box"):
+            yield Static("", id="prompt-completions")
+            yield Input(placeholder="type a slash command (/help) + Enter", id="prompt")
         yield Static(self._status_text(), id="status-bar")
         yield Footer()
 
@@ -471,6 +545,126 @@ class TacticApp(App):
 
     def _log(self, msg: str) -> None:
         self.query_one("#log", RichLog).write(msg)
+
+    # ------------------------------------------------------------- slash commands
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "prompt":
+            return
+        self._refresh_completions(event.input.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "prompt":
+            return
+        text = event.value.strip()
+        event.input.clear()
+        self._hide_completions()
+        if not text:
+            return
+        if text.startswith("/"):
+            result = self.command_registry.execute(self, text)
+            if not result.handled and result.message:
+                self.notify(result.message, severity="warning")
+            if result.handled:
+                self._apply_command(result)
+            return
+        # Plain text: treat as an inline theorem statement.
+        self.notify("Treat as `/prove`? Press p/c or use /prove <statement>.",
+                    severity="information")
+
+    def _refresh_completions(self, text: str) -> None:
+        widget = self.query_one("#prompt-completions", Static)
+        items = command_completions(self.command_registry, text)
+        if not items:
+            self._hide_completions()
+            return
+        widget.update(
+            "\n".join(f"  {cmd:<14} {desc}" for cmd, desc in items)
+        )
+        widget.styles.display = "block"
+
+    def _hide_completions(self) -> None:
+        widget = self.query_one("#prompt-completions", Static)
+        widget.styles.display = "none"
+
+    def action_complete_prompt(self) -> None:
+        """Tab: complete the current slash-command prefix."""
+        prompt = self.query_one("#prompt", Input)
+        if prompt is not self.focused:
+            return
+        items = command_completions(self.command_registry, prompt.value)
+        if items:
+            prompt.value = items[0][0] + " "
+            prompt.cursor_position = len(prompt.value)
+            self._hide_completions()
+
+    def _apply_command(self, result: CommandResult) -> None:
+        """Apply a CommandResult's flags (tau's TUI dispatch order)."""
+        if result.message:
+            if "\n" in result.message:
+                self._show_command_message(result.message)
+            else:
+                self.notify(result.message)
+        if result.clear_requested:
+            self.query_one("#log", RichLog).clear()
+        if result.stop_requested:
+            self.action_stop()
+        if result.run_requested:
+            self.action_run_remaining()
+        if result.prove_requested:
+            if result.prove_statement:
+                self._prove_statement(result.prove_statement)
+            else:
+                self.action_custom_prove()
+        if result.workers_requested is not None:
+            self.n_workers = result.workers_requested
+            self._refresh_status()
+        if result.sessions_picker_requested:
+            self.action_sessions()
+        if result.replay_session_id:
+            self._replay_by_id(result.replay_session_id)
+        if result.leaderboard_requested:
+            self.action_leaderboard()
+        if result.export_requested and result.export_destination:
+            self._export_log(result.export_destination)
+        if result.exit_requested:
+            self.exit()
+
+    def _show_command_message(self, body: str) -> None:
+        """Show command output in a modal (tau's _show_command_message)."""
+        title = "command output"
+        self.push_screen(MessageScreen(title, body))
+
+    def _prove_statement(self, statement: str) -> None:
+        """Prove an inline theorem from /prove <statement>."""
+        m = re.search(r"\b(?:theorem|lemma|example)\s+(\w+)", statement)
+        base = m.group(1) if m else "custom"
+        self._custom_seq += 1
+        problem = {
+            "id": f"{base}-{self._custom_seq}" if self._custom_seq > 1 else base,
+            "statement": statement,
+            "difficulty": "custom",
+        }
+        self._log(f"\n[bold magenta]custom: {problem['id']}[/bold magenta]")
+        self._start_run([problem])
+
+    def _replay_by_id(self, session_id: str) -> None:
+        for sp in sess.list_sessions():
+            if sp.stem == session_id:
+                self.push_screen(ReplayScreen(sp))
+                return
+
+    def _export_log(self, destination: Path) -> None:
+        from textual.selection import SELECT_ALL
+
+        log = self.query_one("#log", SelectableRichLog)
+        text = log.get_selection(SELECT_ALL)
+        try:
+            destination.write_text((text[0] if text else "") + "\n")
+        except OSError as exc:
+            self.notify(f"Export failed: {exc}", severity="error")
+            return
+        self.notify(f"Log exported to {destination}")
 
     # ---------------------------------------------------------------- proving
 
