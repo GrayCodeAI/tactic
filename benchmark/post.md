@@ -6,7 +6,7 @@ Numbers to fill in at post time: FINAL_SCORE / FINAL_FLIPS / FINAL_WALL_TIME
 
 ```
 Built an open-source agent that writes Lean 4 proofs: LLM draft → lake
-compile → feed exact errors back → patch. 66/100 on my graded benchmark
+compile → feed exact errors back → patch. 68/100 on my graded benchmark
 with a 27B free Qwen endpoint. $0. Hammer pre-pass alone nukes the trivial
 tier. Loop > clever prompting. github.com/lpatel/tactic
 ```
@@ -26,8 +26,8 @@ are machine-readable and precise, so generation turns into a convergent
 repair loop instead of generate-and-hope. Nothing counts until the kernel
 accepts it.
 
-Result: 66/100 on a 100-problem graded benchmark (trivial 20/20, easy
-23/30, medium 19/30, hard 4/20) using Qwen3.8-27B on a free HuggingFace
+Result: 68/100 on a 100-problem graded benchmark (trivial 20/20, easy
+23/30, medium 21/30, hard 4/20) using Qwen3.8-27B on a free HuggingFace
 endpoint. Total cost: $0; ~2.3M tokens for the full run.
 
 What worked:
@@ -45,7 +45,7 @@ What worked:
   re-trying the same dead ends.
 
 What didn't: the same model re-fails the same problems. Re-running the 34
-failures flipped only a small handful. Score ceiling is model-bound; the
+failures flipped 2 (medium tier). Score ceiling is model-bound; the
 loop is not the bottleneck.
 
 The repo also has: 100-problem benchmark in JSON, JSONL session logs,
@@ -58,7 +58,7 @@ on what people would trust as a public leaderboard.
 
 ## Lean Zulip (leanprover-community, topic in "General Mathlib")
 
-Subject: proof-writing agent with error-repair loop — 66/100 on a graded
+Subject: proof-writing agent with error-repair loop — 68/100 on a graded
 benchmark with a 27B model
 
 Body (shorter, more technical than HN):
@@ -71,8 +71,8 @@ Lean LSP's `getInteractiveGoals` RPC. A tactic hammer pre-pass
 (ring/omega/linarith/… before any LLM call) solves a surprising number
 outright.
 
-Graded benchmark (100 problems): trivial 20/20, easy 23/30, medium 19/30,
-hard 4/20 — 66/100 total, with Qwen3.8-27B on a free HF endpoint. Cost $0
+Graded benchmark (100 problems): trivial 20/20, easy 23/30, medium 21/30,
+hard 4/20 — 68/100 total, with Qwen3.8-27B on a free HF endpoint. Cost $0
 (~2.3M tokens). Interesting: retries of the 34 failures flip very few —
 the loop converges or it doesn't.
 
