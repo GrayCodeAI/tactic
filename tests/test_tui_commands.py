@@ -78,7 +78,7 @@ async def test_completions_appear_and_ctrl_space_completes() -> None:
         await pilot.pause()
         prompt = app.query_one("#prompt", Input)
         prompt.focus()
-        prompt.value = "/pro"
+        prompt.value = "/prov"
         await pilot.pause()
         assert app.query_one("#prompt-completions").styles.display == "block"
 

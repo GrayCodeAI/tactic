@@ -62,6 +62,7 @@ class CommandResult:
     branch_requested: bool = False
     branch_at: int | None = None
     leaderboard_requested: bool = False
+    prompts_requested: bool = False
     export_requested: bool = False
     export_destination: Path | None = None
     theme: str | None = None
@@ -220,6 +221,11 @@ def create_default_command_registry() -> CommandRegistry:
         name="leaderboard", description="Show the local leaderboard.",
         usage="/leaderboard", handler=_leaderboard_command,
         aliases=("board",), search_terms=("scores",),
+    ))
+    registry.register(SlashCommand(
+        name="prompts", description="Pick a markdown prompt template to apply.",
+        usage="/prompts", handler=_prompts_command,
+        search_terms=("template", "brief", "expand"),
     ))
     registry.register(SlashCommand(
         name="model", description="Show the active model.",
@@ -386,6 +392,10 @@ def _export_command(context: CommandContext) -> CommandResult:
 
 def _leaderboard_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, leaderboard_requested=True)
+
+
+def _prompts_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, prompts_requested=True)
 
 
 def _status_command(context: CommandContext) -> CommandResult:

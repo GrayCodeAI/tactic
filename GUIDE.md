@@ -181,10 +181,17 @@ Slash commands in the prompt bar (complete with `ctrl+space`):
 /resume                     browse sessions (picker) · replay one
 /branch <session> [turn]    re-run a theorem from an earlier turn
 /name <new name>            rename the most recent session
-/export <path>              save the log panel
+/export <path>              save the session transcript (html/jsonl by suffix)
+/prompts                    pick a markdown prompt template to apply
 /theme [name]               tactic-dark / tactic-light / high-contrast
 /model /system /hotkeys     show model / loop system prompt / keymap
 ```
+
+Prompt templates are markdown files in `~/.tactic/prompts/` or
+`<project>/.tactic/prompts/` (project wins, `TACTIC_PROMPTS_DIR` overrides).
+Typing `/name args` for an unknown command expands the template; `{{ args }}`
+or `{{ arguments }}` receives the arguments. Templates named `prompts`,
+`skills`, `tools`, `reload` are reserved.
 
 Selecting text in any panel copies it (auto-copy in session replay with
 OSC-52 via pyperclip/terminal when available). Sessions are durable under

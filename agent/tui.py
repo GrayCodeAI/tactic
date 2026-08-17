@@ -542,6 +542,42 @@ class TrustScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class PromptsScreen(ModalScreen[str | None]):
+    """Pick a markdown prompt template (tau's /prompts picker)."""
+
+    CSS = """
+    PromptsScreen { align: center middle; }
+    #prompts-list {
+        width: 90; height: 80%;
+        background: $panel; border: round $primary; padding: 1 2;
+    }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "dismiss(None)", "Close"),
+    ]
+
+    def __init__(self, templates: list) -> None:
+        super().__init__()
+        self._templates = templates
+
+    def compose(self) -> ComposeResult:
+        yield OptionList(id="prompts-list")
+
+    def on_mount(self) -> None:
+        opt_list = self.query_one(OptionList)
+        if not self._templates:
+            opt_list.add_option(Option("(no prompt templates found)", id=None))
+            return
+        for template in self._templates:
+            label = template.name
+            if template.description:
+                label += f"  [dim]— {template.description[:50]}[/dim]"
+            opt_list.add_option(Option(label, id=template.name))
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+
 class TacticApp(App):
     """Interactive proof agent dashboard."""
 
@@ -796,7 +832,20 @@ class TacticApp(App):
                 self.notify(result.message, severity="warning")
             if result.handled:
                 self._apply_command(result)
-            return
+                return
+            # Unknown slash command: fall back to prompt-template expansion
+            # (tau parity; built-in commands keep precedence over templates).
+            from .prompt_templates import (
+                expand_prompt_template_command,
+                load_prompt_templates,
+            )
+
+            expanded = expand_prompt_template_command(text, load_prompt_templates())
+            if expanded is not None:
+                text = expanded.strip()
+            else:
+                self.notify(f"Unknown command: {text.split()[0]}", severity="warning")
+                return
         # Plain text: queue as a follow-up proof while a run is active
         # (tau's queue_follow_up), else treat as an inline theorem.
         if self._run_active:
@@ -923,6 +972,8 @@ class TacticApp(App):
             self._replay_by_id(result.replay_session_id)
         if result.leaderboard_requested:
             self.action_leaderboard()
+        if result.prompts_requested:
+            self.action_prompts()
         if result.theme:
             self._set_theme(result.theme)
         if result.export_requested and result.export_destination:
@@ -1287,6 +1338,27 @@ class TacticApp(App):
 
     def action_leaderboard(self) -> None:
         self.push_screen(LeaderboardScreen())
+
+    def action_prompts(self) -> None:
+        """Pick and insert a prompt template into the bar (tau's /prompts)."""
+        from .prompt_templates import load_prompt_templates
+
+        templates = load_prompt_templates()
+        if not templates:
+            self.notify(
+                "No prompt templates in ~/.tactic/prompts or .tactic/prompts.",
+                severity="warning",
+            )
+            return
+        self.push_screen(PromptsScreen(templates), callback=self._prompt_template_chosen)
+
+    def _prompt_template_chosen(self, name: str | None) -> None:
+        if not name:
+            return
+        prompt = self.query_one("#prompt", PromptInput)
+        prompt.value = f"/{name} "
+        prompt.cursor_position = len(prompt.value)
+        prompt.focus()
 
     def action_quit_app(self) -> None:
         self.exit()
