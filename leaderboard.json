@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Qwen/Qwen3.8-27B (hammer+LSP goals)",
+    "score": 66,
+    "total": 100,
+    "tiers": {
+      "trivial": {
+        "proved": 20,
+        "total": 20
+      },
+      "easy": {
+        "proved": 23,
+        "total": 30
+      },
+      "medium": {
+        "proved": 19,
+        "total": 30
+      },
+      "hard": {
+        "proved": 4,
+        "total": 20
+      }
+    },
+    "max_steps": 20,
+    "date": "2026-08-17"
+  }
+]
