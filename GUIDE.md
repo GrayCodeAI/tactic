@@ -142,15 +142,46 @@ convergent repair loop. On top of that, the agent also feeds the model the
 RPC), so the model sees actual hypotheses + targets, not just error text.
 
 Files:
-- `agent/loop.py` — the loop, hammer pre-pass, history trimming, result tracking
+- `agent/loop.py` — the loop, hammer pre-pass, resume/branch, result tracking
 - `agent/events.py` — event protocol: one record stream fans out to trace/session/TUI
 - `agent/session.py` — durable JSONL sessions (`~/.tactic/sessions/`, `tactic sessions`)
+- `agent/session_manager.py` — session index (`index.jsonl`), resume history rebuild
+- `agent/compaction.py` — folds old attempts into a failed-attempts summary
 - `agent/lean.py` — `lake build` / `lake env lean` + diagnostic regex + source-context
 - `agent/llm.py` — OpenAI-compatible client, ```lean block extraction, cost tracking
 - `agent/lsp.py` — Lean language server client (goal-state feedback)
 - `agent/mcp.py` — MCP server (expose `prove_theorem` to any agent)
-- `agent/tui.py` — Textual TUI (browse problems, live proof trace)
+- `agent/commands.py` — slash-command registry (`/help` `/branch` `/theme`, …)
+- `agent/autocomplete.py` — slash-command completions
+- `agent/themes.py` — TUI themes (`/theme`, custom in `~/.tactic/themes/*.json`)
+- `agent/terminal_title.py` — terminal tab title + braille spinner while running
+- `agent/tui.py` — Textual TUI (browse problems, live proof trace, replay, commands)
 - `agent/main.py` — CLI (`prove` / `bench` / `tui` / `mcp` / `sessions` / `leaderboard`)
+
+## 5b. The TUI
+
+`tactic tui` (add `-p 4` for parallel workers). Panel layout: problem list,
+log, goals, errors, proof. Keymap: `p` prove selected · `c` custom theorem ·
+`r` run remaining · `w` workers · `s` stop · `v` sessions · `l` leaderboard ·
+`q` quit.
+
+Slash commands in the prompt bar (complete with `ctrl+space`):
+
+```
+/help /status /clear /stop /run /quit
+/prove [<statement>]        prove a custom theorem (editor modal or inline)
+/workers <n>                parallel proof workers
+/resume                     browse sessions (picker) · replay one
+/branch <session> [turn]    re-run a theorem from an earlier turn
+/export <path>              save the log panel
+/theme [name]               tactic-dark / tactic-light / high-contrast
+/model /system /hotkeys     show model / loop system prompt / keymap
+```
+
+Selecting text in any panel copies it (auto-copy in session replay with
+OSC-52 via pyperclip/terminal when available). Sessions are durable under
+`~/.tactic/sessions/`; resuming one seeds the repair loop with the old
+attempts so it doesn't repeat the same dead ends.
 
 ---
 
