@@ -137,13 +137,17 @@ statement ──► LLM drafts proof ──► lake build ──► type-checks?
 The key insight: **Lean's compiler errors are machine-readable and precise.**
 The LLM doesn't need to "know" it's right — it just needs to fix the exact
 error Lean reports. This turns hallucination-prone generation into a
-convergent repair loop.
+convergent repair loop. On top of that, the agent also feeds the model the
+**open goal states** (via the Lean language server's `getInteractiveGoals`
+RPC), so the model sees actual hypotheses + targets, not just error text.
 
 Files:
-- `agent/loop.py` — the loop, history trimming, result tracking
-- `agent/lean.py` — `lake build` + diagnostic regex + source-context extraction
-- `agent/llm.py` — OpenAI-compatible client, ```lean block extraction
-- `agent/main.py` — CLI (`prove` / `bench`)
+- `agent/loop.py` — the loop, hammer pre-pass, history trimming, result tracking
+- `agent/lean.py` — `lake build` / `lake env lean` + diagnostic regex + source-context
+- `agent/llm.py` — OpenAI-compatible client, ```lean block extraction, cost tracking
+- `agent/lsp.py` — Lean language server client (goal-state feedback)
+- `agent/mcp.py` — MCP server (expose `prove_theorem` to any agent)
+- `agent/main.py` — CLI (`prove` / `bench` / `mcp` / `leaderboard`)
 
 ---
 
@@ -176,11 +180,14 @@ Files:
 - [x] Core loop + error parsing with source context
 - [x] 100-problem graded benchmark
 - [x] Mathlib wiring
-- [ ] Proof-trace logging + token/cost tracking per problem
-- [ ] Per-problem file isolation → parallel benchmark runs
-- [ ] Goal-state feedback (not just errors) via Lean LSP
-- [ ] MCP server wrapper (use tactic from any agent)
+- [x] Hammer pre-pass (`ring`/`omega`/`linarith`/… before spending LLM tokens)
+- [x] Proof-trace logging + token/cost tracking per problem
+- [x] Per-problem file isolation → parallel benchmark runs (`--parallel N`)
+- [x] Goal-state feedback (not just errors) via Lean LSP (`getInteractiveGoals`)
+- [x] MCP server wrapper (`tactic mcp` — tools: prove_theorem, benchmark_score, problems)
+- [x] Local leaderboard (`tactic leaderboard --run --show`)
 - [ ] Public leaderboard + first results post
+
 
 ---
 

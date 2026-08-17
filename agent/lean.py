@@ -34,6 +34,27 @@ def build(lean_dir: Path, timeout: int = 120) -> tuple[bool, str]:
         capture_output=True,
         text=True,
         timeout=timeout,
+        check=False,
+    )
+    output = (proc.stdout or "") + (proc.stderr or "")
+    proved = proc.returncode == 0 and "declaration uses 'sorry'" not in output
+    return proved, output
+
+
+def check_file(lean_file: Path, lean_dir: Path, timeout: int = 60) -> tuple[bool, str]:
+    """Run `lake env lean` on a single file for fast, isolated verification.
+
+    Uses `lake env` to set up the correct package environment (Mathlib, etc.).
+    Returns (proved, raw_output). proved means: exit code 0 AND no
+    declaration uses 'sorry'.
+    """
+    proc = subprocess.run(
+        ["lake", "env", "lean", str(lean_file)],
+        cwd=lean_dir,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
     )
     output = (proc.stdout or "") + (proc.stderr or "")
     proved = proc.returncode == 0 and "declaration uses 'sorry'" not in output

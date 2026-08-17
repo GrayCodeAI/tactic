@@ -4,5 +4,6 @@ __pycache__/
 *.egg-info/
 lean/.lake/
 lean/build/
+lean/tmp/
 report.json
 .env

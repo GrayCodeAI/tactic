@@ -33,6 +33,15 @@ tactic prove "theorem pythagoras (a b c : ℕ) : a ^ 2 + b ^ 2 = c ^ 2 ↔ a = 0
 
 # Run the benchmark (100 theorems, JSON in benchmark/problems.json)
 tactic bench --max-steps 20 --report report.json
+tactic bench --parallel 8            # isolation makes parallelism safe
+tactic bench --no-goal-feedback      # errors only, no LSP goal state
+
+# Local leaderboard: run a subset and record the score
+tactic leaderboard --run --problems benchmark/trivial.json --name my-model
+tactic leaderboard --show
+
+# Use tactic from any MCP client (Claude, opencode, Cursor, …)
+tactic mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
 ```
 
 ## How it works
@@ -64,18 +73,25 @@ generate-and-hope.
 ```
 lean/           Lean 4 package (lake)
   src/Tactic.lean   target file the agent edits
+  tmp/              per-problem files (benchmark isolation)
 agent/          the agent (Python)
-  loop.py         main iteration loop
+  loop.py         main iteration loop (+ hammer pre-pass)
   lean.py         lake invocation + diagnostic parsing
-  llm.py          LLM provider (OpenAI-compatible)
+  llm.py          LLM provider (OpenAI-compatible) + cost tracking
+  lsp.py          Lean language server client (goal-state feedback)
+  mcp.py          MCP server (expose prove_theorem to any agent)
+  main.py         CLI (prove / bench / mcp / leaderboard)
 benchmark/      fixed theorem set + runner
+leaderboard.json local score history (tactic leaderboard)
 ```
 
 ## Roadmap
 
 - [x] 100-problem graded benchmark (benchmark/problems.json)
-- [ ] Better error-context extraction (surrounding source, not just line:col)
-- [ ] Per-problem Lean file isolation (parallel runs)
-- [ ] Proof trace logging + cost tracking
-- [ ] Public leaderboard
-- [ ] MCP server wrapper
+- [x] Better error-context extraction (surrounding source, not just line:col)
+- [x] Per-problem Lean file isolation (parallel runs)
+- [x] Proof trace logging + cost tracking
+- [x] Goal-state feedback via Lean LSP (`getInteractiveGoals`)
+- [x] MCP server wrapper (`tactic mcp`)
+- [x] Leaderboard (local: `tactic leaderboard`; public site TBD)
+- [ ] Public leaderboard + first results post
