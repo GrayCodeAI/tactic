@@ -94,6 +94,16 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return serve()
 
 
+def cmd_tui(args: argparse.Namespace) -> int:
+    try:
+        from .tui import main as tui_main
+    except ImportError:
+        print("TUI requires the optional 'textual' dependency: pip install 'tactic[tui]'")
+        return 1
+    tui_main()
+    return 0
+
+
 BOARD_FILE = "leaderboard.json"
 
 
@@ -176,6 +186,9 @@ def cli() -> None:
 
     m = sub.add_parser("mcp", help="run the MCP (Model Context Protocol) stdio server")
     m.set_defaults(fn=cmd_mcp)
+
+    t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
+    t.set_defaults(fn=cmd_tui)
 
     lb = sub.add_parser("leaderboard", help="record a benchmark score / show the board")
     lb.add_argument("--run", action="store_true",

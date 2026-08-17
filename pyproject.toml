@@ -9,6 +9,9 @@ description = "Agent that writes and iterates Lean 4 proofs"
 requires-python = ">=3.10"
 dependencies = ["openai>=1.30"]
 
+[project.optional-dependencies]
+tui = ["textual>=0.80"]
+
 [project.scripts]
 tactic = "agent.main:cli"
 

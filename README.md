@@ -31,6 +31,9 @@ export TACTIC_MODEL=gpt-4o
 # Prove a single theorem interactively (edits lean/src/Tactic.lean)
 tactic prove "theorem pythagoras (a b c : ℕ) : a ^ 2 + b ^ 2 = c ^ 2 ↔ a = 0" --max-steps 20
 
+# Interactive TUI: browse problems, watch live repairs (needs: pip install 'tactic[tui]')
+tactic tui
+
 # Run the benchmark (100 theorems, JSON in benchmark/problems.json)
 tactic bench --max-steps 20 --report report.json
 tactic bench --parallel 8            # isolation makes parallelism safe
@@ -80,7 +83,8 @@ agent/          the agent (Python)
   llm.py          LLM provider (OpenAI-compatible) + cost tracking
   lsp.py          Lean language server client (goal-state feedback)
   mcp.py          MCP server (expose prove_theorem to any agent)
-  main.py         CLI (prove / bench / mcp / leaderboard)
+  tui.py          Textual TUI (browse problems, live proof trace)
+  main.py         CLI (prove / bench / tui / mcp / leaderboard)
 benchmark/      fixed theorem set + runner
 leaderboard.json local score history (tactic leaderboard)
 ```
