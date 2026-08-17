@@ -204,8 +204,8 @@ def test_system_shows_proof_loop_system_prompt(registry, session) -> None:
 def test_help_lists_all_commands(registry, session) -> None:
     msg = registry.execute(session, "/help").message or ""
     for name in ("/quit", "/help", "/prove", "/run", "/stop", "/workers",
-                 "/resume", "/export", "/leaderboard", "/model", "/system",
-                 "/hotkeys", "/status", "/clear"):
+                 "/resume", "/branch", "/export", "/leaderboard", "/model",
+                 "/system", "/hotkeys", "/status", "/clear"):
         assert name in msg, name
 
 
@@ -228,9 +228,40 @@ def test_registry_rejects_duplicates() -> None:
         registry.register(SlashCommand("new", "", "", handler, aliases=("exit",)))
 
 
+def test_branch_requires_session_id(registry, session) -> None:
+    result = registry.execute(session, "/branch")
+    assert result.branch_requested is False
+    assert "Usage" in (result.message or "")
+
+
+def test_branch_with_known_id_resumes(registry, session) -> None:
+    result = registry.execute(session, "/branch 20260101-000000-sq_nonneg")
+    assert result.branch_requested is True
+    assert result.replay_session_id == "20260101-000000-sq_nonneg"
+    assert result.branch_at is None
+
+
+def test_branch_with_turn_truncates(registry, session) -> None:
+    result = registry.execute(session, "/branch 20260101-000000-sq_nonneg 3")
+    assert result.branch_requested is True
+    assert result.branch_at == 3
+
+
+def test_branch_rejects_unknown_session(registry, session) -> None:
+    result = registry.execute(session, "/branch nope")
+    assert result.branch_requested is False
+    assert "not found" in (result.message or "")
+
+
+def test_branch_rejects_bad_turn(registry, session) -> None:
+    result = registry.execute(session, "/branch 20260101-000000-sq_nonneg xyz")
+    assert result.branch_requested is False
+    assert "Usage" in (result.message or "")
+
+
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; tactic ships 14 built-ins."""
-    assert len(registry.list_commands()) == 14
+    """20 was tau's alignment number; tactic ships 15 built-ins."""
+    assert len(registry.list_commands()) == 15
 
 
 def test_command_result_defaults(registry, session) -> None:

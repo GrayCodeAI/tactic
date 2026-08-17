@@ -33,6 +33,10 @@ def format(rec: dict) -> str | None:
     if ev == "hammer":
         mark = "✓" if rec.get("ok") else "✗"
         return f"  [hammer {rec['i']}/{rec['total']}] `{rec['tactic']}` {mark}"
+    if ev == "resume":
+        branch = f" at turn {rec['branch_at']}" if rec.get("branch_at") is not None else ""
+        return (f"  resumed session {rec.get('session_id')} "
+                f"({rec.get('seed_turns')} turns seeded){branch}")
     if ev == "llm_start":
         return "  no hammer worked, starting LLM loop"
     if ev == "build":

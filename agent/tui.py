@@ -621,7 +621,9 @@ class TacticApp(App):
             self._refresh_status()
         if result.sessions_picker_requested:
             self.action_sessions()
-        if result.replay_session_id:
+        if result.branch_requested and result.replay_session_id:
+            self._branch_run(result.replay_session_id, result.branch_at)
+        elif result.replay_session_id:
             self._replay_by_id(result.replay_session_id)
         if result.leaderboard_requested:
             self.action_leaderboard()
@@ -653,6 +655,58 @@ class TacticApp(App):
             if sp.stem == session_id:
                 self.push_screen(ReplayScreen(sp))
                 return
+
+    def _branch_run(self, session_id: str, branch_at: int | None) -> None:
+        """Re-run a recorded session's theorem, seeded from its history
+        (tau: branch_to_entry repoints the leaf; here prove(resume_from=...))."""
+        from .session_manager import SessionManager
+
+        if self._run_active:
+            self.notify("Already running — press s to stop first.", severity="warning")
+            return
+        rec = SessionManager().get(session_id)
+        if rec is None:
+            self.notify(f"Session not found: {session_id}", severity="error")
+            return
+        records = sess.read_session(Path(rec.path))
+        start = next((r for r in records if r.get("event") == "start"), {})
+        statement = start.get("statement")
+        if not statement:
+            self.notify("Session has no recorded statement.", severity="error")
+            return
+        pid = start.get("problem_id") or "branch"
+
+        def worker() -> None:
+            result = prove(
+                statement, max_steps=20, verbose=False,
+                problem_id=pid, goal_feedback=True,
+                on_event=lambda ev: self._probe_event(pid, ev),
+                should_stop=lambda: self._stop_flag,
+                resume_from=session_id, branch_at=branch_at,
+            )
+            status = ("proved" if result.proved
+                      else "stopped" if result.stopped else "failed")
+            self.call_from_thread(self._finish_custom_row, pid, status, result)
+
+        self._stop_flag = False
+        self._run_active = True
+        self._sync_text_selection_state()
+        self._refresh_status()
+        self._log(f"\n[bold]── branch {session_id}"
+                  f"{' @ turn ' + str(branch_at) if branch_at is not None else ''}[/bold]")
+        self.run_worker(worker, thread=True, group="prove")
+
+    def _finish_custom_row(self, problem_id: str, status: str, result) -> None:
+        """Finish handler for runs not backed by a ProblemRow (branch/custom)."""
+        self.counts[status] = self.counts.get(status, 0) + 1
+        proof = result.proof if result.proved else ""
+        if proof:
+            panel = self.query_one("#proof", RichLog)
+            panel.clear()
+            panel.write(escape(proof))
+        self._run_active = False
+        self._sync_text_selection_state()
+        self._refresh_status()
 
     def _export_log(self, destination: Path) -> None:
         from textual.selection import SELECT_ALL

@@ -56,6 +56,8 @@ class CommandResult:
     workers_requested: int | None = None
     sessions_picker_requested: bool = False
     replay_session_id: str | None = None
+    branch_requested: bool = False
+    branch_at: int | None = None
     leaderboard_requested: bool = False
     export_requested: bool = False
     export_destination: Path | None = None
@@ -196,6 +198,11 @@ def create_default_command_registry() -> CommandRegistry:
         search_terms=("sessions", "replay", "history"),
     ))
     registry.register(SlashCommand(
+        name="branch", description="Re-run a theorem from an earlier point of a session.",
+        usage="/branch <session-id> [turn]", handler=_branch_command,
+        search_terms=("retry", "fork", "continue"),
+    ))
+    registry.register(SlashCommand(
         name="export", description="Export the log panel to a file.",
         usage="/export <path>", handler=_export_command,
         search_terms=("save",),
@@ -277,6 +284,29 @@ def _resume_command(context: CommandContext) -> CommandResult:
                                  message=f"Session not found: {context.args}")
         return CommandResult(handled=True, replay_session_id=context.args)
     return CommandResult(handled=True, sessions_picker_requested=True)
+
+
+def _branch_command(context: CommandContext) -> CommandResult:
+    if not context.args:
+        return CommandResult(handled=True,
+                             message="Usage: /branch <session-id> [turn]")
+    parts = context.args.split(None, 1)
+    session_id = parts[0]
+    if session_id not in set(context.session.session_ids):
+        return CommandResult(handled=True,
+                             message=f"Session not found: {session_id}")
+    turn = None
+    if len(parts) > 1:
+        try:
+            turn = max(0, int(parts[1]))
+        except ValueError:
+            return CommandResult(handled=True,
+                                 message="Usage: /branch <session-id> [turn]")
+    return CommandResult(handled=True, replay_session_id=session_id,
+                         branch_requested=True, branch_at=turn,
+                         message=(f"Branching {session_id} from turn {turn}."
+                                  if turn is not None
+                                  else f"Resuming {session_id} from where it failed."))
 
 
 def _export_command(context: CommandContext) -> CommandResult:

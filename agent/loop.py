@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import events, lean, llm, lsp
-from .session import Session
+from .session import Session, read_session
+from .session_manager import SessionManager, SessionRecord, history_from_records
 
 LEAN_DIR = Path(__file__).resolve().parent.parent / "lean"
 
@@ -133,6 +134,8 @@ def prove(
     on_event: Callable[[dict], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
     record_session: bool = True,
+    resume_from: str | None = None,
+    branch_at: int | None = None,
 ) -> Result:
     t0 = time.time()
     signature = _split_signature(statement)
@@ -145,6 +148,7 @@ def prove(
     session = Session(problem_id=problem_id)
     session_open = session.open() if record_session else False
     session_path = str(session.path) if session_open else None
+    manager = SessionManager()
 
     def emit(event: str, **payload) -> None:
         """Single emit path: trace + session JSONL + callback + CLI print."""
@@ -206,6 +210,14 @@ def prove(
             session_id=session.id if session_open else None,
         )
         session.close()
+        if record_session:
+            manager.upsert(SessionRecord(
+                id=session.id, path=str(session.path), problem_id=problem_id,
+                model=llm.model(),
+                status="stopped" if stopped else ("proved" if proved else "failed"),
+                proved=proved, steps=steps,
+                created_at=t0, updated_at=time.time(),
+            ))
         return Result(
             statement, proved, steps, secs, proof, history,
             total_prompt, total_completion, total_tokens, cost, trace,
@@ -214,20 +226,56 @@ def prove(
 
     emit("start", statement=statement, problem_id=problem_id,
          max_steps=max_steps, model=llm.model())
+    if record_session:
+        manager.upsert(SessionRecord(
+            id=session.id, path=str(session.path), problem_id=problem_id,
+            model=llm.model(), status="running",
+            created_at=t0, updated_at=time.time(),
+        ))
+
+    # ---- Resume/branch: seed the repair history from a recorded session
+    # (tau: replay the root→leaf path to rebuild harness messages).
+    body = None  # initial proof body; seeded on resume
+    if resume_from:
+        records = []
+        for rec in manager.list_sessions():
+            if rec.id == resume_from:
+                records = read_session(Path(rec.path))
+                break
+        if records:
+            seed = history_from_records(records)
+            if branch_at is not None:
+                # branch_at = keep only the first N user/assistant turns,
+                # discarding the rest of the recorded trajectory
+                # (tau: repoint the LeafEntry at an earlier entry).
+                seed = seed[: max(0, branch_at) * 2]
+            if seed:
+                history = seed[:12]
+                last_asst = next(
+                    (m["content"] for m in reversed(seed)
+                     if m["role"] == "assistant" and m["content"].strip()
+                     and m["content"] != "(no response)"),
+                    None,
+                )
+                if last_asst:
+                    body = _extract_body(last_asst)
+                emit("resume", session_id=resume_from, seed_turns=len(seed) // 2,
+                     branch_at=branch_at)
 
     # ---- Hammer pre-pass: try one-shot tactics before spending LLM tokens.
-    for i, hammer in enumerate(HAMMERS, 1):
-        if stop_requested():
-            break
-        write_file(f"  {hammer}")
-        ok, output = check_file()
-        emit("hammer", i=i, total=len(HAMMERS), tactic=hammer, ok=ok,
-             output="" if ok else output[-500:])
-        if ok:
-            return finish(True, i, target_file.read_text(), 0.0)
-    emit("llm_start")
-
-    body = "  sorry"  # initial placeholder so the first build reports sorry
+    # Skipped on resume — the previous run already showed they don't work here.
+    if body is None:
+        for i, hammer in enumerate(HAMMERS, 1):
+            if stop_requested():
+                break
+            write_file(f"  {hammer}")
+            ok, output = check_file()
+            emit("hammer", i=i, total=len(HAMMERS), tactic=hammer, ok=ok,
+                 output="" if ok else output[-500:])
+            if ok:
+                return finish(True, i, target_file.read_text(), 0.0)
+        emit("llm_start")
+        body = "  sorry"  # placeholder so the first build reports sorry
     write_file(body)
 
     for step in range(1, max_steps + 1):
