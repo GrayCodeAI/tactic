@@ -12,7 +12,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import ClassVar
 
@@ -748,10 +748,12 @@ class TacticApp(App):
             self.problems = []
             self._log("[red]project inputs untrusted — problems not loaded; "
                       "set TACTIC_TRUST=always to allow[/red]")
+            self._emit_reload_summary(problems=0)
             return
         self.problems = load_problems()
         if not self.problems:
             self._log("[red]benchmark/problems.json not found[/red]")
+            self._emit_reload_summary(problems=0)
             return
         problems_list = self.query_one(ListView)
         problems_list.clear()
@@ -761,6 +763,19 @@ class TacticApp(App):
         self._log(f"model: [cyan]{model}[/cyan] — {len(self.problems)} problems loaded")
         self._log("[dim]p prove · c custom · r run rest · w workers · s stop · "
                   "v sessions · l board · q quit[/dim]")
+        self._emit_reload_summary(problems=len(self.problems))
+
+    def _emit_reload_summary(self, problems: int) -> None:
+        """Log a Pi-style before/after resource reload summary (tau parity)."""
+        from .reload import ReloadSnapshot, build_reload_summary, take_reload_snapshot
+
+        before = getattr(self, "_reload_before", None)
+        if not isinstance(before, ReloadSnapshot):
+            return
+        after = take_reload_snapshot()
+        after = replace(after, problems=problems)
+        summary = build_reload_summary(before, after)
+        self._log(f"reload: {summary.render()}")
 
     async def _resolve_project_trust(self, mode: str):
         """Resolve project-input trust for the repo (tau parity; the TUI
@@ -1401,8 +1416,25 @@ class TacticApp(App):
 
     def _reload_resources(self) -> None:
         """Re-run discovery: trust, problems, themes (tau's /reload)."""
+        from .reload import take_reload_snapshot
+
         mode = os.environ.get("TACTIC_TRUST", "always")
+        self._reload_before = take_reload_snapshot()
+        self._reload_before = replace(self._reload_before, problems=len(self.problems))
         self.run_worker(self._mount_trust_flow(mode), name="project-trust-reload")
+
+    def _emit_reload_summary(self, problems: int) -> None:
+        """Log a Pi-style before/after resource reload summary (tau parity)."""
+        from .reload import ReloadSnapshot, build_reload_summary, take_reload_snapshot
+
+
+        before = getattr(self, "_reload_before", None)
+        if not isinstance(before, ReloadSnapshot):
+            return
+        after = take_reload_snapshot()
+        after = replace(after, problems=problems)
+        summary = build_reload_summary(before, after)
+        self._log(f"reload: {summary.render()}")
 
     def _prompt_template_chosen(self, name: str | None) -> None:
         if not name:
