@@ -160,7 +160,7 @@ Files:
   need more; strong models usually finish in ≤5.
 - `TACTIC_MODEL` — bigger model = fewer steps, higher quality. For
   proof-writing, 235B-class >> 27B-class >> 7B-class.
-- History is trimmed to the last 12 messages automatically to stay in context.
+- History is compacted (not truncated): once it passes 18 turns, old attempts are folded into a failed-attempts summary so the model stops re-trying dead ends (last 12 turns stay verbatim).
 - Temperature is fixed at 0.2 in `agent/llm.py` (proofs want determinism).
 
 ---
@@ -189,6 +189,11 @@ Files:
 - [x] Goal-state feedback (not just errors) via Lean LSP (`getInteractiveGoals`)
 - [x] MCP server wrapper (`tactic mcp` — tools: prove_theorem, benchmark_score, problems)
 - [x] Local leaderboard (`tactic leaderboard --run --show`)
+- [x] TUI: custom prove, session replay, parallel workers, Errors panel
+- [x] Clipboard (tau port: pyperclip + OSC-52 fallback, selection-aware)
+- [x] Slash commands (`/help` `/prove` `/branch <id> [turn]` …, tau pattern)
+- [x] Session resume + branching (index.jsonl, prove --resume from, branch_at)
+- [x] History compaction (failed-attempts summary, tau memory model)
 - [ ] Public leaderboard + first results post
 
 

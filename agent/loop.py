@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import events, lean, llm, lsp
+from .compaction import compact_history
 from .session import Session, read_session
 from .session_manager import SessionManager, SessionRecord, history_from_records
 
@@ -321,7 +322,11 @@ def prove(
         emit("llm_response", step=step, prompt_tokens=resp.prompt_tokens,
              completion_tokens=resp.completion_tokens,
              tokens=resp.total_tokens, body=new_body)
-        if len(history) > 12:
-            history = history[-12:]
+        # Compaction beats truncation: fold old dead-end turns into a
+        # summary so the model stops re-trying them (tau's memory model).
+        n_msgs = len(history)
+        history, summary = compact_history(history)
+        if summary:
+            emit("compaction", dropped=n_msgs - len(history))
 
     return finish(False, max_steps, "", llm.estimate_cost(total_prompt, total_completion))

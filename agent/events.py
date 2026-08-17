@@ -49,6 +49,8 @@ def format(rec: dict) -> str | None:
         return f"  [step {rec['step']}] goal: {first[0] if first else ''}"
     if ev == "llm_request":
         return None
+    if ev == "compaction":
+        return "  [compaction] folded old turns into a failed-attempts summary"
     if ev == "llm_response":
         return f"  [step {rec['step']}] LLM replied ({rec.get('tokens', '?')} tokens)"
     if ev == "llm_error":
