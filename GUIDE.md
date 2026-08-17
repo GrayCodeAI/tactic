@@ -143,11 +143,14 @@ RPC), so the model sees actual hypotheses + targets, not just error text.
 
 Files:
 - `agent/loop.py` — the loop, hammer pre-pass, history trimming, result tracking
+- `agent/events.py` — event protocol: one record stream fans out to trace/session/TUI
+- `agent/session.py` — durable JSONL sessions (`~/.tactic/sessions/`, `tactic sessions`)
 - `agent/lean.py` — `lake build` / `lake env lean` + diagnostic regex + source-context
 - `agent/llm.py` — OpenAI-compatible client, ```lean block extraction, cost tracking
 - `agent/lsp.py` — Lean language server client (goal-state feedback)
 - `agent/mcp.py` — MCP server (expose `prove_theorem` to any agent)
-- `agent/main.py` — CLI (`prove` / `bench` / `mcp` / `leaderboard`)
+- `agent/tui.py` — Textual TUI (browse problems, live proof trace)
+- `agent/main.py` — CLI (`prove` / `bench` / `tui` / `mcp` / `sessions` / `leaderboard`)
 
 ---
 

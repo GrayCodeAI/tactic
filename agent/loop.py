@@ -14,7 +14,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import lean, llm, lsp
+from . import events, lean, llm, lsp
+from .session import Session
 
 LEAN_DIR = Path(__file__).resolve().parent.parent / "lean"
 
@@ -65,10 +66,12 @@ class Result:
     total_completion_tokens: int = 0
     total_tokens: int = 0
     estimated_cost_usd: float = 0.0
-    # Proof trace
+    # Proof trace (event records — see agent/events.py)
     trace: list[dict] = field(default_factory=list)
     # True when the run was aborted by should_stop (e.g. TUI Stop)
     stopped: bool = False
+    # JSONL session log for this run (None if recording disabled)
+    session_path: str | None = None
 
 
 def _get_lean_file(problem_id: str | None = None) -> Path:
@@ -129,6 +132,7 @@ def prove(
     goal_feedback: bool = True,
     on_event: Callable[[dict], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    record_session: bool = True,
 ) -> Result:
     t0 = time.time()
     signature = _split_signature(statement)
@@ -138,9 +142,21 @@ def prove(
     total_completion = 0
     total_tokens = 0
 
-    def emit(event: dict) -> None:
+    session = Session(problem_id=problem_id)
+    session_open = session.open() if record_session else False
+    session_path = str(session.path) if session_open else None
+
+    def emit(event: str, **payload) -> None:
+        """Single emit path: trace + session JSONL + callback + CLI print."""
+        rec = events.record(event, **payload)
+        trace.append(rec)
+        session.write(rec)
         if on_event:
-            on_event(event)
+            on_event(rec)
+        if verbose:
+            line = events.format(rec)
+            if line:
+                print(line)
 
     def stop_requested() -> bool:
         return bool(should_stop and should_stop())
@@ -171,71 +187,67 @@ def prove(
         except Exception:  # noqa: BLE001 — LSP feedback is optional; never break the loop
             return None
 
+    def finish(
+        proved: bool, steps: int, proof: str, cost: float, stopped: bool = False
+    ) -> Result:
+        secs = time.time() - t0
+        if lsp_client:
+            lsp_client.close()
+        emit(
+            "result",
+            proved=proved,
+            steps=steps,
+            seconds=round(secs, 2),
+            prompt_tokens=total_prompt,
+            completion_tokens=total_completion,
+            total_tokens=total_tokens,
+            cost_usd=cost,
+            stopped=stopped,
+            session_id=session.id if session_open else None,
+        )
+        session.close()
+        return Result(
+            statement, proved, steps, secs, proof, history,
+            total_prompt, total_completion, total_tokens, cost, trace,
+            stopped, session_path,
+        )
+
+    emit("start", statement=statement, problem_id=problem_id,
+         max_steps=max_steps, model=llm.model())
+
     # ---- Hammer pre-pass: try one-shot tactics before spending LLM tokens.
     for i, hammer in enumerate(HAMMERS, 1):
         if stop_requested():
             break
         write_file(f"  {hammer}")
-        emit({"type": "hammer", "i": i, "total": len(HAMMERS), "tactic": hammer})
         ok, output = check_file()
-        trace.append({"step": i, "type": "hammer", "tactic": hammer, "ok": ok, "output": output[-500:] if not ok else ""})
+        emit("hammer", i=i, total=len(HAMMERS), tactic=hammer, ok=ok,
+             output="" if ok else output[-500:])
         if ok:
-            final = target_file.read_text()
-            emit({"type": "proved", "how": f"hammer:{hammer}", "steps": i})
-            if verbose:
-                print(f"  [hammer {i}/{len(HAMMERS)}] PROVED ∎ by `{hammer}`")
-            if lsp_client:
-                lsp_client.close()
-            return Result(
-                statement, True, i, time.time() - t0, final, history,
-                total_prompt, total_completion, total_tokens, 0.0, trace
-            )
-    emit({"type": "llm_start"})
-    if verbose:
-        print("  [hammer] no one-shot tactic worked, starting LLM loop")
+            return finish(True, i, target_file.read_text(), 0.0)
+    emit("llm_start")
 
     body = "  sorry"  # initial placeholder so the first build reports sorry
     write_file(body)
 
     for step in range(1, max_steps + 1):
         if stop_requested():
-            emit({"type": "stopped"})
-            cost = llm.estimate_cost(total_prompt, total_completion)
-            if lsp_client:
-                lsp_client.close()
-            return Result(
-                statement, False, step - 1, time.time() - t0, "", history,
-                total_prompt, total_completion, total_tokens, cost, trace, True
-            )
+            return finish(False, step - 1, "", llm.estimate_cost(total_prompt, total_completion), stopped=True)
         ok, output = check_file()
         diags = lean.parse_diagnostics(output)
         ndiag = len(diags)
-        trace.append({"step": step, "type": "build", "ok": ok, "diagnostics": ndiag, "output_tail": output[-500:]})
         if ok:
-            final = target_file.read_text()
-            emit({"type": "proved", "how": "llm", "steps": step})
-            if verbose:
-                print(f"  [step {step}] PROVED ∎")
-            cost = llm.estimate_cost(total_prompt, total_completion)
-            if lsp_client:
-                lsp_client.close()
-            return Result(
-                statement, True, step, time.time() - t0, final, history,
-                total_prompt, total_completion, total_tokens, cost, trace
-            )
+            emit("build", step=step, ok=True, diagnostics=0, summary="all goals solved")
+            return finish(True, step, target_file.read_text(),
+                          llm.estimate_cost(total_prompt, total_completion))
 
         report = lean.error_report(LEAN_DIR, output)
-        emit({"type": "build", "step": step, "ok": False, "diagnostics": ndiag,
-              "summary": (diags[0].message if diags else "sorry / not proved")})
+        emit("build", step=step, ok=False, diagnostics=ndiag,
+             summary=(diags[0].message if diags else "sorry / not proved"),
+             report=report[:4000])
         goals = get_goals(HEADER + signature + "\n" + body + "\n")
         if goals:
-            trace.append({"step": step, "type": "goal", "goals": goals})
-            emit({"type": "goals", "step": step, "goals": goals})
-        if verbose:
-            tag = f"{ndiag} diagnostics" if ndiag else "sorry / not proved"
-            if goals:
-                tag += " + goals"
-            print(f"  [step {step}] {tag}")
+            emit("goals", step=step, goals=goals)
 
         user_msg = (
             f"Theorem signature:\n{signature}\n\n"
@@ -244,14 +256,11 @@ def prove(
             + "Write ONLY the tactic proof body."
         )
         history.append({"role": "user", "content": user_msg})
-        emit({"type": "llm_request", "step": step})
+        emit("llm_request", step=step)
         resp = llm.chat(SYSTEM, history)
         if resp.content.startswith("[LLM error"):
-            emit({"type": "llm_error", "step": step, "error": resp.content})
-            if verbose:
-                print(f"  [step {step}] {resp.content}")
+            emit("llm_error", step=step, error=resp.content)
             history.append({"role": "assistant", "content": "(no response)"})
-            trace.append({"step": step, "type": "llm", "error": resp.content})
             continue
         new_body = _extract_body(resp.content)
         if new_body:
@@ -261,17 +270,10 @@ def prove(
         total_prompt += resp.prompt_tokens
         total_completion += resp.completion_tokens
         total_tokens += resp.total_tokens
-        emit({"type": "llm_response", "step": step,
-              "tokens": resp.total_tokens, "body": new_body or "(empty)"})
-        trace.append({"step": step, "type": "llm", "prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens, "body": new_body[:200]})
+        emit("llm_response", step=step, prompt_tokens=resp.prompt_tokens,
+             completion_tokens=resp.completion_tokens,
+             tokens=resp.total_tokens, body=new_body)
         if len(history) > 12:
             history = history[-12:]
 
-    emit({"type": "failed", "max_steps": max_steps})
-    cost = llm.estimate_cost(total_prompt, total_completion)
-    if lsp_client:
-        lsp_client.close()
-    return Result(
-        statement, False, max_steps, time.time() - t0, "", history,
-        total_prompt, total_completion, total_tokens, cost, trace
-    )
+    return finish(False, max_steps, "", llm.estimate_cost(total_prompt, total_completion))

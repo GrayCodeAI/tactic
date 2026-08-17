@@ -16,18 +16,24 @@ from .loop import prove
 
 def cmd_prove(args: argparse.Namespace) -> int:
     print(f"Proving:\n{args.statement}\n")
-    r = prove(args.statement, max_steps=args.max_steps, goal_feedback=not args.no_goal_feedback)
+    r = prove(args.statement, max_steps=args.max_steps,
+              goal_feedback=not args.no_goal_feedback,
+              record_session=not args.no_record)
     print(f"\nproved={r.proved} steps={r.steps} time={r.seconds:.1f}s")
     print(f"tokens: {r.total_tokens} (prompt={r.total_prompt_tokens}, completion={r.total_completion_tokens}) cost≈${r.estimated_cost_usd:.6f}")
+    if r.session_path:
+        print(f"session: {r.session_path}")
     if r.proved:
         print("\n" + r.proof)
     return 0 if r.proved else 1
 
 
-def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: bool = True) -> tuple[dict, int, float]:
+def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: bool = True,
+               record_session: bool = True) -> tuple[dict, int, float]:
     """Prove a single problem. Returns (result_dict, tokens, cost)."""
     print(f"[{idx}/{total}] {p['id']}: {p['statement'][:70]}...")
-    r = prove(p["statement"], max_steps=max_steps, verbose=False, problem_id=p["id"], goal_feedback=goal_feedback)
+    r = prove(p["statement"], max_steps=max_steps, verbose=False, problem_id=p["id"],
+              goal_feedback=goal_feedback, record_session=record_session)
     result = {
         "id": p["id"],
         "proved": r.proved,
@@ -37,6 +43,7 @@ def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: boo
         "prompt_tokens": r.total_prompt_tokens,
         "completion_tokens": r.total_completion_tokens,
         "cost_usd": round(r.estimated_cost_usd, 6),
+        "session": r.session_path,
         "trace": r.trace,
     }
     cost_str = f" cost≈${r.estimated_cost_usd:.6f}" if r.total_tokens else ""
@@ -60,7 +67,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
         print(f"Running {len(problems)} problems in parallel (workers={args.parallel})...")
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
             futures = [
-                executor.submit(_prove_one, p, args.max_steps, i, len(problems), goal_feedback)
+                executor.submit(_prove_one, p, args.max_steps, i, len(problems), goal_feedback, args.record)
                 for i, p in enumerate(problems, start + 1)
             ]
             for fut in concurrent.futures.as_completed(futures):
@@ -70,7 +77,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
                 total_cost += cost
     else:
         for i, p in enumerate(problems, start + 1):
-            result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems), goal_feedback)
+            result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems), goal_feedback, args.record)
             results.append(result)
             total_tokens += tokens
             total_cost += cost
@@ -101,6 +108,47 @@ def cmd_tui(args: argparse.Namespace) -> int:
         print("TUI requires the optional 'textual' dependency: pip install 'tactic[tui]'")
         return 1
     tui_main()
+    return 0
+
+
+def cmd_sessions(args: argparse.Namespace) -> int:
+    from . import session
+    from .events import format as fmt_event
+
+    sessions = session.list_sessions()
+    if not sessions:
+        print(f"No sessions in {session.sessions_dir()}")
+        return 0
+
+    if args.id:
+        path = None
+        for sp in sessions:
+            if sp.stem == args.id or str(sp).endswith(args.id):
+                path = sp
+                break
+        if path is None:
+            print(f"session not found: {args.id}")
+            return 1
+        for rec in session.read_session(path):
+            line = fmt_event(rec)
+            if line:
+                print(line)
+            elif args.raw:
+                print(json.dumps(rec, ensure_ascii=False))
+        return 0
+
+    # list mode
+    if args.limit:
+        sessions = sessions[: args.limit]
+    for sp in sessions:
+        recs = session.read_session(sp)
+        start = next((r for r in recs if r.get("event") == "start"), {})
+        result = next((r for r in recs if r.get("event") == "result"), {})
+        status = "✓" if result.get("proved") else ("◼" if result.get("stopped") else "✘")
+        pid = start.get("problem_id") or "?"
+        steps = result.get("steps", "?")
+        secs = result.get("seconds", "?")
+        print(f"{status} {sp.stem:<48} {pid!s:<28} steps={steps} {secs}s")
     return 0
 
 
@@ -172,6 +220,8 @@ def cli() -> None:
     p.add_argument("--max-steps", type=int, default=20)
     p.add_argument("--no-goal-feedback", action="store_true",
                    help="disable LSP goal-state feedback")
+    p.add_argument("--no-record", action="store_true",
+                   help="disable JSONL session recording")
     p.set_defaults(fn=cmd_prove)
 
     b = sub.add_parser("bench", help="run the benchmark suite")
@@ -182,13 +232,22 @@ def cli() -> None:
     b.add_argument("--parallel", type=int, default=1, help="number of parallel workers (default=1, sequential)")
     b.add_argument("--no-goal-feedback", action="store_true",
                    help="disable LSP goal-state feedback")
-    b.set_defaults(fn=cmd_bench)
+    b.add_argument("--no-record", action="store_false", dest="record",
+                   help="disable JSONL session recording")
+    b.set_defaults(fn=cmd_bench, record=True)
 
     m = sub.add_parser("mcp", help="run the MCP (Model Context Protocol) stdio server")
     m.set_defaults(fn=cmd_mcp)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
     t.set_defaults(fn=cmd_tui)
+
+    s = sub.add_parser("sessions", help="list/inspect recorded proof sessions (~/.tactic/sessions)")
+    s.add_argument("id", nargs="?", default=None,
+                   help="session id (filename stem) to show in detail")
+    s.add_argument("--limit", type=int, default=20, help="max sessions to list")
+    s.add_argument("--raw", action="store_true", help="also dump raw JSON records")
+    s.set_defaults(fn=cmd_sessions)
 
     lb = sub.add_parser("leaderboard", help="record a benchmark score / show the board")
     lb.add_argument("--run", action="store_true",

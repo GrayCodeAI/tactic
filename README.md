@@ -38,6 +38,12 @@ tactic tui
 tactic bench --max-steps 20 --report report.json
 tactic bench --parallel 8            # isolation makes parallelism safe
 tactic bench --no-goal-feedback      # errors only, no LSP goal state
+tactic bench --no-record             # skip JSONL session logs
+
+# Inspect recorded proof sessions (event stream per run)
+tactic sessions                      # list recent sessions
+tactic sessions 20260817-015954-proof       # replay one
+tactic sessions 20260817-015954-proof --raw # with raw JSON records
 
 # Local leaderboard: run a subset and record the score
 tactic leaderboard --run --problems benchmark/trivial.json --name my-model
@@ -79,12 +85,14 @@ lean/           Lean 4 package (lake)
   tmp/              per-problem files (benchmark isolation)
 agent/          the agent (Python)
   loop.py         main iteration loop (+ hammer pre-pass)
+  events.py       event protocol — one record stream to trace/session/TUI
+  session.py      JSONL sessions (~/.tactic/sessions/, `tactic sessions`)
   lean.py         lake invocation + diagnostic parsing
   llm.py          LLM provider (OpenAI-compatible) + cost tracking
   lsp.py          Lean language server client (goal-state feedback)
   mcp.py          MCP server (expose prove_theorem to any agent)
   tui.py          Textual TUI (browse problems, live proof trace)
-  main.py         CLI (prove / bench / tui / mcp / leaderboard)
+  main.py         CLI (prove / bench / tui / mcp / sessions / leaderboard)
 benchmark/      fixed theorem set + runner
 leaderboard.json local score history (tactic leaderboard)
 ```

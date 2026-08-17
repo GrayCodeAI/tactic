@@ -228,28 +228,39 @@ class TacticApp(App):
         self.call_from_thread(self._render_event, problem_id, ev)
 
     def _render_event(self, problem_id: str, ev: dict) -> None:
-        t = ev["type"]
-        if t == "hammer":
-            self._log(f"  [dim]hammer {ev['i']}/{ev['total']}: `{ev['tactic']}`[/dim]")
+        """Render a prove() event record (see agent/events.py)."""
+        t = ev.get("event")
+        if t == "start":
+            pass  # already announced
+        elif t == "hammer":
+            if ev.get("ok"):
+                self._log(f"  [bold green]hammer {ev['i']}/{ev['total']}: `{ev['tactic']}` ✓ PROVED ∎[/bold green]")
+            else:
+                self._log(f"  [dim]hammer {ev['i']}/{ev['total']}: `{ev['tactic']}` ✗[/dim]")
         elif t == "llm_start":
             self._log("  [yellow]no hammer worked → LLM repair loop[/yellow]")
         elif t == "build":
-            self._log(f"  [step {ev['step']}] {ev['diagnostics']} diagnostics — {str(ev.get('summary',''))[:70]}")
+            if not ev.get("ok"):
+                self._log(f"  [step {ev['step']}] {ev['diagnostics']} diagnostics — {str(ev.get('summary',''))[:70]}")
         elif t == "goals":
             self._set_panel("goals", ev["goals"])
         elif t == "llm_request":
             self._log(f"  [cyan]step {ev['step']}: asking LLM…[/cyan]")
         elif t == "llm_response":
-            self._log(f"  step {ev['step']}: LLM replied ({ev['tokens']} tokens)")
-            self._set_panel("proof", ev["body"])
+            self._log(f"  step {ev['step']}: LLM replied ({ev.get('tokens','?')} tokens)")
+            self._set_panel("proof", ev.get("body", "") or "(empty)")
         elif t == "llm_error":
-            self._log(f"  [red]step {ev['step']}: {ev['error'][:100]}[/red]")
-        elif t == "proved":
-            self._log(f"  [bold green]PROVED ∎ ({ev['how']}, {ev['steps']} steps)[/bold green]")
-        elif t == "failed":
-            self._log(f"  [bold red]FAILED after {ev['max_steps']} steps[/bold red]")
-        elif t == "stopped":
-            self._log("  [yellow]stopped by user[/yellow]")
+            self._log(f"  [red]step {ev['step']}: {str(ev.get('error',''))[:100]}[/red]")
+        elif t == "result":
+            if ev.get("stopped"):
+                self._log(f"  [yellow]stopped by user ({ev.get('seconds',0):.1f}s)[/yellow]")
+            elif ev.get("proved"):
+                self._log(f"  [bold green]PROVED ∎ ({ev.get('steps')} steps, {ev.get('seconds',0):.1f}s)[/bold green]")
+            else:
+                self._log(f"  [bold red]FAILED after {ev.get('steps')} steps ({ev.get('seconds',0):.1f}s)[/bold red]")
+            sid = ev.get("session_id")
+            if sid:
+                self._log(f"  [dim]session: ~/.tactic/sessions/{sid}.jsonl[/dim]")
 
     # ---------------------------------------------------------------- rows/status
 
