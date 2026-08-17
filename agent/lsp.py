@@ -1,0 +1,251 @@
+"""Lean LSP client: goal-state feedback via `lean --server` + widget RPC.
+
+The Lean 4 language server exposes interactive goal states through the
+`Lean.Widget.getInteractiveGoals` RPC procedure (the same one the VS Code
+infoview uses). We drive a short-lived server over stdio JSON-RPC so the
+repair loop can feed the model the actual open goals, not just error text.
+
+Falls back to None on any failure — the loop must work with errors alone.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import threading
+from pathlib import Path
+from urllib.parse import quote
+
+LSP_TIMEOUT = float(os.environ.get("TACTIC_LSP_TIMEOUT", "90"))
+
+
+def file_uri(path: Path) -> str:
+    return "file://" + quote(str(path))
+
+
+def _tt_str(tt) -> str:
+    """Flatten Lean's TaggedText JSON to plain text."""
+    if isinstance(tt, dict):
+        if "text" in tt:
+            return tt["text"]
+        if "tag" in tt:
+            return _tt_str(tt["tag"][1])
+        if "append" in tt:
+            return "".join(_tt_str(c) for c in tt["append"])
+        if "group" in tt:
+            return _tt_str(tt["group"])
+    return ""
+
+
+def format_goals(result: dict) -> str | None:
+    """Render a getInteractiveGoals result as an infoview-style string."""
+    goals = result.get("goals") or []
+    parts = []
+    for g in goals:
+        lines = []
+        for hyp in g.get("hyps", []):
+            names = ", ".join(hyp.get("names", []))
+            lines.append(f"{names} : {_tt_str(hyp.get('type', {}))}")
+        lines.append(g.get("goalPrefix", "⊢") + _tt_str(g.get("type", {})))
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts) if parts else None
+
+
+class LeanLSP:
+    """One `lean --server` session bound to one file."""
+
+    def __init__(self, lean_dir: Path, lean_file: Path):
+        self.lean_dir = lean_dir
+        self.lean_file = lean_file
+        self.uri = file_uri(lean_file)
+        self.version = 1
+        self._next_id = 0
+        self._opened = False  # didOpen sent for current server process
+        self._proc: subprocess.Popen | None = None
+        self._lock = threading.RLock()
+
+    def _send(self, obj: dict) -> None:
+        assert self._proc and self._proc.stdin
+        data = json.dumps(obj).encode()
+        self._proc.stdin.write(b"Content-Length: " + str(len(data)).encode() + b"\r\n\r\n" + data)
+        self._proc.stdin.flush()
+
+    def _request(self, method: str, params: dict, timeout: float | None = None) -> dict | None:
+        """Send a request and block until its response arrives. None on failure."""
+        timeout = LSP_TIMEOUT if timeout is None else timeout
+        self._next_id += 1
+        rid = self._next_id
+        try:
+            self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+        except (OSError, ValueError):
+            return None
+        return self._wait_for(rid, timeout)
+
+    def _wait_for(self, rid: int, timeout: float) -> dict | None:
+        deadline = threading.Timer(timeout, self._kill)
+        deadline.start()
+        try:
+            while True:
+                msg = self._read_msg()
+                if msg is None:
+                    return None
+                if msg.get("id") == rid:
+                    return msg
+        finally:
+            deadline.cancel()
+
+    def _read_msg(self) -> dict | None:
+        assert self._proc and self._proc.stdout
+        headers = {}
+        line = self._proc.stdout.readline()
+        if not line:
+            return None
+        while line.strip():
+            k, _, v = line.decode("utf-8", "replace").partition(":")
+            headers[k.strip()] = v.strip()
+            line = self._proc.stdout.readline()
+        try:
+            n = int(headers.get("Content-Length", "0"))
+            if n <= 0:
+                return None
+            return json.loads(self._proc.stdout.read(n))
+        except (ValueError, json.JSONDecodeError):
+            return None
+
+    def _kill(self) -> None:
+        if self._proc and self._proc.poll() is None:
+            self._proc.kill()
+
+    def _ensure_started(self) -> bool:
+        if self._proc and self._proc.poll() is None:
+            return True
+        try:
+            self._proc = subprocess.Popen(
+                ["lake", "env", "lean", "--server"],
+                cwd=self.lean_dir,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
+        except OSError:
+            return False
+        init = self._request(
+            "initialize",
+            {
+                "processId": os.getpid(),
+                "rootUri": file_uri(self.lean_dir),
+                "capabilities": {},
+            },
+        )
+        if init is None or "error" in init:
+            self.close()
+            return False
+        try:
+            self._send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+        except OSError:
+            self.close()
+            return False
+        return True
+
+    def open_file(self) -> bool:
+        with self._lock:
+            if not self._ensure_started():
+                return False
+            if not self._opened:
+                text = self.lean_file.read_text()
+                self._send(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/didOpen",
+                        "params": {
+                            "textDocument": {
+                                "uri": self.uri,
+                                "languageId": "lean",
+                                "version": self.version,
+                                "text": text,
+                            }
+                        },
+                    }
+                )
+                self.version += 1
+                self._opened = True
+            return True
+
+    def update(self, text: str) -> None:
+        """Push new file contents (didChange) so the next query sees them."""
+        with self._lock:
+            if not self._ensure_started() or not self._opened:
+                return
+            self._send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didChange",
+                    "params": {
+                        "textDocument": {"uri": self.uri, "version": self.version},
+                        "contentChanges": [{"text": text}],
+                    },
+                }
+            )
+            self.version += 1
+
+    def goals(self, line: int, character: int) -> str | None:
+        """Goal state at a 0-indexed LSP position, or None if unavailable."""
+        with self._lock:
+            if not self.open_file():
+                return None
+            td = {"uri": self.uri}
+            pos = {"line": line, "character": character}
+            resp = self._request(
+                "$/lean/rpc/connect", {"uri": self.uri}
+            )
+            if resp is None or "error" in resp:
+                return None
+            sid = resp.get("result", {}).get("sessionId")
+            inner = {"textDocument": td, "position": pos}
+            resp = self._request(
+                "$/lean/rpc/call",
+                {
+                    "sessionId": sid,
+                    "method": "Lean.Widget.getInteractiveGoals",
+                    "textDocument": td,
+                    "position": pos,
+                    "params": inner,
+                },
+            )
+            if resp is None or "error" in resp or resp.get("result") is None:
+                return None
+            return format_goals(resp["result"])
+
+    def goal_at_end(self, text: str) -> str | None:
+        """Open goal state for `text` (already updated to server).
+
+        Tries, in order: end of last non-empty line, end of the `:= by`
+        signature line (the initial goal), so that `sorry` bodies still yield
+        a goal state rather than nothing.
+        """
+        lines = text.splitlines()
+        idx = len(lines) - 1
+        while idx >= 0 and not lines[idx].strip():
+            idx -= 1
+
+        candidates = []
+        if idx >= 0:
+            candidates.append((idx, len(lines[idx])))
+        for i, ln in enumerate(lines):
+            if ":=" in ln and "by" in ln:
+                candidates.append((i, len(ln)))
+        for line, char in candidates:
+            goals = self.goals(line, char)
+            if goals:
+                return goals
+        return None
+
+    def close(self) -> None:
+        with self._lock:
+            if self._proc is not None:
+                if self._proc.poll() is None:
+                    self._proc.kill()
+                self._proc = None
+            self.version = 1
