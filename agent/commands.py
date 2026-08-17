@@ -61,6 +61,7 @@ class CommandResult:
     leaderboard_requested: bool = False
     export_requested: bool = False
     export_destination: Path | None = None
+    theme: str | None = None
     message: str | None = None
 
 
@@ -217,6 +218,11 @@ def create_default_command_registry() -> CommandRegistry:
         usage="/model", handler=_model_command,
     ))
     registry.register(SlashCommand(
+        name="theme", description="Show or set the TUI theme.",
+        usage="/theme [name]", handler=_theme_command,
+        search_terms=("colors", "appearance"),
+    ))
+    registry.register(SlashCommand(
         name="system", description="Show the proof loop's system prompt.",
         usage="/system", handler=_system_command,
     ))
@@ -344,6 +350,24 @@ def _system_command(context: CommandContext) -> CommandResult:
     from .loop import SYSTEM
 
     return CommandResult(handled=True, message=SYSTEM)
+
+
+def _theme_command(context: CommandContext) -> CommandResult:
+    from .themes import available_tui_theme_names, get_tui_theme
+
+    current = getattr(context.session, "theme", None) or "tactic-dark"
+    if not context.args:
+        names = ", ".join(available_tui_theme_names())
+        return CommandResult(handled=True,
+                             message=f"Theme: {current}. Available: {names}")
+    name = context.args.strip()
+    try:
+        get_tui_theme(name)
+    except KeyError:
+        return CommandResult(handled=True,
+                             message=f"Unknown theme: {name}")
+    return CommandResult(handled=True, theme=name,
+                         message=f"Theme set to {name}.")
 
 
 def _hotkeys_command(context: CommandContext) -> CommandResult:

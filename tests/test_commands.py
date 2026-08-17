@@ -205,7 +205,7 @@ def test_help_lists_all_commands(registry, session) -> None:
     msg = registry.execute(session, "/help").message or ""
     for name in ("/quit", "/help", "/prove", "/run", "/stop", "/workers",
                  "/resume", "/branch", "/export", "/leaderboard", "/model",
-                 "/system", "/hotkeys", "/status", "/clear"):
+                 "/system", "/hotkeys", "/status", "/clear", "/theme"):
         assert name in msg, name
 
 
@@ -259,9 +259,27 @@ def test_branch_rejects_bad_turn(registry, session) -> None:
     assert "Usage" in (result.message or "")
 
 
+def test_theme_shows_current_and_available(registry, session) -> None:
+    result = registry.execute(session, "/theme")
+    msg = result.message or ""
+    assert "tactic-dark" in msg
+    assert result.theme is None
+
+
+def test_theme_sets_theme(registry, session) -> None:
+    result = registry.execute(session, "/theme tactic-light")
+    assert result.theme == "tactic-light"
+
+
+def test_theme_rejects_unknown(registry, session) -> None:
+    result = registry.execute(session, "/theme nope")
+    assert result.theme is None
+    assert "Unknown theme" in (result.message or "")
+
+
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; tactic ships 15 built-ins."""
-    assert len(registry.list_commands()) == 15
+    """20 was tau's alignment number; tactic ships 16 built-ins."""
+    assert len(registry.list_commands()) == 16
 
 
 def test_command_result_defaults(registry, session) -> None:

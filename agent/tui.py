@@ -45,6 +45,14 @@ from . import session as sess
 from .autocomplete import command_completions
 from .commands import CommandResult, create_default_command_registry
 from .loop import prove
+from .terminal_title import TerminalTitleController
+from .themes import (
+    TuiTheme,
+    available_tui_theme_names,
+    get_tui_theme,
+    textual_theme_variables,
+    theme_css_variables,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 PROBLEMS_FILE = REPO / "benchmark" / "problems.json"
@@ -61,6 +69,7 @@ class TuiSettings:
     """TUI preferences (subset of tau's TuiSettings)."""
 
     auto_copy_selection: bool = False
+    theme: str = "tactic-dark"
 
 
 def load_problems() -> list[dict]:
@@ -468,11 +477,52 @@ class TacticApp(App):
         self.n_workers = min(max(parallel, 1), MAX_WORKERS)
         self.tui_settings = tui_settings or TuiSettings()
         self._supports_pyperclip: bool | None = None
+        self._terminal_title = TerminalTitleController()
         self._stop_flag = False
         self._run_active = False
         self._custom_seq = 0
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
         self.command_registry = create_default_command_registry()
+
+    def get_theme_variables(self) -> dict[str, str]:
+        """CSS variables from the active theme (tau's get_theme_variable_defaults)."""
+        return theme_css_variables(self._active_theme())
+
+    @property
+    def resolved_theme(self) -> TuiTheme:
+        """Active theme with tau-dark fallback (tau's TuiSettings.resolved_theme)."""
+        try:
+            return get_tui_theme(self.tui_settings.theme)
+        except KeyError:
+            return get_tui_theme("tactic-dark")
+
+    def _active_theme(self) -> TuiTheme:
+        return self.resolved_theme
+
+    def _register_tactic_themes(self) -> None:
+        """Register every available theme with Textual's theme system."""
+        from textual.theme import Theme
+
+        for name in available_tui_theme_names():
+            palette = get_tui_theme(name)
+            css_vars = textual_theme_variables(palette)
+            self.register_theme(Theme(
+                name=name,
+                primary=palette.accent,
+                secondary=palette.border,
+                accent=palette.accent,
+                warning=palette.warn,
+                error=palette.error,
+                success=palette.success,
+                foreground=palette.screen_text,
+                background=palette.screen_background,
+                surface=palette.chrome_background,
+                panel=palette.sidebar_background,
+                dark=palette.dark,
+                variables=css_vars,
+            ))
+        dark = self.tui_settings.theme == "tactic-dark" or self.resolved_theme.dark
+        self.dark = dark
 
     # ------------------------------------------------------ CommandSession protocol
 
@@ -521,6 +571,10 @@ class TacticApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._register_tactic_themes()
+        with suppress(Exception):
+            self.theme = self.tui_settings.theme
+        self._sync_terminal_title()
         if not self.problems:
             self._log("[red]benchmark/problems.json not found[/red]")
             return
@@ -627,6 +681,8 @@ class TacticApp(App):
             self._replay_by_id(result.replay_session_id)
         if result.leaderboard_requested:
             self.action_leaderboard()
+        if result.theme:
+            self._set_theme(result.theme)
         if result.export_requested and result.export_destination:
             self._export_log(result.export_destination)
         if result.exit_requested:
@@ -636,6 +692,21 @@ class TacticApp(App):
         """Show command output in a modal (tau's _show_command_message)."""
         title = "command output"
         self.push_screen(MessageScreen(title, body))
+
+    def _set_theme(self, name: str) -> None:
+        """Apply a theme by name (tau's /theme wiring)."""
+        try:
+            get_tui_theme(name)
+        except KeyError:
+            self.notify(f"Unknown theme: {name}", severity="error")
+            return
+        self.tui_settings = TuiSettings(
+            auto_copy_selection=self.tui_settings.auto_copy_selection,
+            theme=name,
+        )
+        with suppress(Exception):
+            self.theme = name
+        self.dark = get_tui_theme(name).dark
 
     def _prove_statement(self, statement: str) -> None:
         """Prove an inline theorem from /prove <statement>."""
@@ -873,6 +944,14 @@ class TacticApp(App):
         self._log(f"[bold]run finished[/bold] — proved {self.counts['proved']} so far")
 
     # ---------------------------------------------------------------- clipboard
+
+    def _sync_terminal_title(self) -> None:
+        """Reflect run state in the terminal tab title (tau parity)."""
+        title = f"{len(self.problems)} problems · proved {self.counts.get('proved', 0)}"
+        self._terminal_title.update(title, running=self._run_active)
+
+    def on_unmount(self) -> None:
+        self._terminal_title.restore()
 
     def _sync_text_selection_state(self) -> None:
         """Disable native text selection while the transcript is mutating (tau parity)."""
