@@ -66,6 +66,7 @@ class CommandResult:
     reload_requested: bool = False
     export_requested: bool = False
     export_destination: Path | None = None
+    usage_requested: bool = False
     theme: str | None = None
     new_session_requested: bool = False
     compact_summary: str | None = None
@@ -232,6 +233,11 @@ def create_default_command_registry() -> CommandRegistry:
         name="reload", description="Reload problems, leaderboard and themes from disk.",
         usage="/reload", handler=_reload_command,
         search_terms=("refresh", "re-read", "restart"),
+    ))
+    registry.register(SlashCommand(
+        name="usage", description="Show the token/cost dashboard for a session.",
+        usage="/usage [session-id|all]", handler=_usage_command,
+        aliases=("cost",), search_terms=("tokens", "billing"),
     ))
     registry.register(SlashCommand(
         name="model", description="Show the active model.",
@@ -406,6 +412,17 @@ def _prompts_command(context: CommandContext) -> CommandResult:
 
 def _reload_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, reload_requested=True, message="Reloading…")
+
+
+def _usage_command(context: CommandContext) -> CommandResult:
+    if not context.args:
+        current = context.session.current_session_id
+        return CommandResult(
+            handled=True, usage_requested=True,
+            message=(f"Usage for {current}" if current
+                     else "Usage: /usage [session-id|all]"),
+        )
+    return CommandResult(handled=True, usage_requested=True, message=f"Usage for {context.args}")
 
 
 def _status_command(context: CommandContext) -> CommandResult:

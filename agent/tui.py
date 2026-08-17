@@ -985,6 +985,8 @@ class TacticApp(App):
             self._set_theme(result.theme)
         if result.export_requested and result.export_destination:
             self._export_log(result.export_destination)
+        if result.usage_requested:
+            self._show_usage(result.message)
         if result.new_session_requested:
             self._new_session()
         if result.compact_summary is not None:
@@ -1098,6 +1100,33 @@ class TacticApp(App):
         self._refresh_status()
         self._terminal_notification.notify_turn_finished()
         self._drain_queued_prompts()
+
+    def _show_usage(self, session_arg: str | None) -> None:
+        from .session_manager import SessionManager
+        from .session_usage import collect_session_usage, render_usage_dashboard
+
+        model = self.model
+        sm = SessionManager()
+        records = {r.id: r for r in sm.list_sessions()}
+        if session_arg is None or session_arg == "all":
+            if not records:
+                self.notify("No sessions recorded.", severity="error")
+                return
+            lines = ["", "Usage — all sessions", "=" * 48]
+            for sid, rec in records.items():
+                usage = collect_session_usage(sess.read_session(Path(rec.path)), model)
+                lines.append("")
+                lines.append(f"### {sid}")
+                lines.append(render_usage_dashboard(usage))
+            self._show_command_message("\n".join(lines))
+        else:
+            sid = session_arg
+            rec = records.get(sid)
+            if rec is None:
+                self.notify(f"Session not found: {sid}", severity="error")
+                return
+            usage = collect_session_usage(sess.read_session(Path(rec.path)), model)
+            self._show_command_message(render_usage_dashboard(usage))
 
     def _export_log(self, destination: Path) -> None:
         from .session_export import export_session

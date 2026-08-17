@@ -282,8 +282,8 @@ def test_theme_rejects_unknown(registry, session) -> None:
 
 
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; tactic ships 21 built-ins."""
-    assert len(registry.list_commands()) == 21
+    """20 was tau's alignment number; tactic ships 22 built-ins (incl. /usage)."""
+    assert len(registry.list_commands()) == 22
 
 
 def test_command_result_defaults(registry, session) -> None:
