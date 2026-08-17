@@ -35,6 +35,7 @@ class SessionRecord:
     status: str | None = None  # "running" | "proved" | "failed" | "stopped"
     proved: bool | None = None
     steps: int | None = None
+    title: str | None = None
     created_at: float = 0.0
     updated_at: float = 0.0
 
@@ -119,6 +120,23 @@ class SessionManager:
             if rec.id == session_id:
                 return rec
         return None
+
+    def rename(self, session_id: str, title: str) -> SessionRecord | None:
+        """Rename a session record (tau's touch_session title update)."""
+        updated = self.touch(session_id, title=title)
+        if updated is not None:
+            return updated
+        # Not indexed yet: create a record from the transcript so the rename sticks.
+        path = self.dir / f"{session_id}.jsonl"
+        if not path.exists():
+            return None
+        record = SessionRecord(
+            id=session_id, path=str(path), problem_id=self._problem_id_of(path),
+            model="?", title=title, created_at=path.stat().st_mtime,
+            updated_at=time.time(),
+        )
+        self.upsert(record)
+        return record
 
     @staticmethod
     def _problem_id_of(path: Path) -> str | None:

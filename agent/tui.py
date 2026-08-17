@@ -45,6 +45,9 @@ from . import session as sess
 from .autocomplete import command_completions
 from .commands import CommandResult, create_default_command_registry
 from .loop import prove
+from .session_manager import SessionManager
+from .session_stats import calculate_session_stats
+from .terminal_notification import TerminalNotificationController
 from .terminal_title import TerminalTitleController
 from .themes import (
     TuiTheme,
@@ -70,6 +73,7 @@ class TuiSettings:
 
     auto_copy_selection: bool = False
     theme: str = "tactic-dark"
+    notification: str = "auto"  # "auto" | "bell" | "off"
 
 
 def load_problems() -> list[dict]:
@@ -419,7 +423,9 @@ class SessionsScreen(ModalScreen[Path | None]):
         if not sessions:
             opt_list.add_option(Option(f"(no sessions in {sess.sessions_dir()})", id=None))
             return
+        records = {r.id: r for r in SessionManager().list_sessions()}
         for sp in sessions:
+            rec = records.get(sp.stem)
             recs = sess.read_session(sp)
             start = next((r for r in recs if r.get("event") == "start"), {})
             result = next((r for r in recs if r.get("event") == "result"), {})
@@ -427,9 +433,13 @@ class SessionsScreen(ModalScreen[Path | None]):
             pid = start.get("problem_id") or "?"
             steps = result.get("steps", "?")
             secs = result.get("seconds", "?")
-            opt_list.add_option(
-                Option(f"{mark} {sp.stem:<48} {pid!s:<28} steps={steps} {secs}s", id=sp.stem)
-            )
+            stats = calculate_session_stats(recs)
+            title = rec.title if rec is not None and rec.title else ""
+            label = (f"{mark} {sp.stem:<42} {pid!s:<26} steps={steps} {secs}s"
+                     f" {stats.total_tokens}t")
+            if title:
+                label += f"  [{title[:40]}]"
+            opt_list.add_option(Option(label, id=sp.stem))
             self._paths[sp.stem] = sp
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -468,6 +478,8 @@ class TacticApp(App):
         Binding("v", "sessions", "Sessions"),
         Binding("l", "leaderboard", "Leaderboard"),
         Binding("ctrl+space", "complete_prompt", show=False),
+        Binding("ctrl+k", "open_command_palette", "Commands", show=False),
+        Binding("ctrl+e", "edit_queued_message", "Edit queued", show=False),
         Binding("q", "quit_app", "Quit"),
     ]
 
@@ -481,8 +493,11 @@ class TacticApp(App):
         self._stop_flag = False
         self._run_active = False
         self._custom_seq = 0
+        self._queued_prompts: list[str] = []
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
         self.command_registry = create_default_command_registry()
+        mode = os.environ.get("TACTIC_NOTIFICATION", self.tui_settings.notification)
+        self._terminal_notification = TerminalNotificationController(mode)
 
     def get_theme_variables(self) -> dict[str, str]:
         """CSS variables from the active theme (tau's get_theme_variable_defaults)."""
@@ -537,6 +552,16 @@ class TacticApp(App):
     @property
     def session_ids(self) -> list[str]:
         return [sp.stem for sp in sess.list_sessions()]
+
+    @property
+    def current_session_id(self) -> str | None:
+        """The most recently updated recorded session (tau's active session)."""
+        sessions = sess.list_sessions()
+        return sessions[0].stem if sessions else None
+
+    @property
+    def session_manager(self) -> SessionManager:
+        return SessionManager()
 
     @property
     def problems_total(self) -> int:
@@ -622,7 +647,17 @@ class TacticApp(App):
             if result.handled:
                 self._apply_command(result)
             return
-        # Plain text: treat as an inline theorem statement.
+        # Plain text: queue as a follow-up proof while a run is active
+        # (tau's queue_follow_up), else treat as an inline theorem.
+        if self._run_active:
+            self._queued_prompts.append(text)
+            self._log(f"[dim]queued:[/dim] {text[:60]}")
+            self.notify(
+                f"Queued ({len(self._queued_prompts)} pending). "
+                "ctrl+e to edit the last one back.",
+                severity="information",
+            )
+            return
         self.notify("Treat as `/prove`? Press p/c or use /prove <statement>.",
                     severity="information")
 
@@ -651,6 +686,63 @@ class TacticApp(App):
             prompt.value = items[0][0] + " "
             prompt.cursor_position = len(prompt.value)
             self._hide_completions()
+
+    def action_open_command_palette(self) -> None:
+        """Ctrl+k: open the slash-command palette in the prompt (tau parity)."""
+        prompt = self.query_one("#prompt", Input)
+        prompt.focus()
+        prompt.value = "/"
+        prompt.cursor_position = len(prompt.value)
+        self._refresh_completions(prompt.value)
+
+    def action_edit_queued_message(self) -> bool:
+        """Ctrl+e: move the latest queued prompt back into the input (tau parity)."""
+        if not self._queued_prompts:
+            return False
+        prompt = self.query_one("#prompt", Input)
+        if prompt.value.strip():
+            return False
+        prompt.value = self._queued_prompts.pop()
+        prompt.cursor_position = len(prompt.value)
+        self._log("[dim]edited queued prompt back into input[/dim]")
+        return True
+
+    def _new_session(self) -> None:
+        """Start fresh: reset statuses, counts and panels (tau's _new_session)."""
+        self.counts = {"proved": 0, "failed": 0, "stopped": 0}
+        self._custom_seq = 0
+        self._queued_prompts = []
+        for row in self.query(ProblemRow):
+            row.set_status("pending")
+        for wid in ("#log", "#goals", "#errors", "#proof"):
+            widget = self.query_one(wid)
+            if hasattr(widget, "clear"):
+                widget.clear()
+        self._refresh_status()
+        self._sync_terminal_title()
+        self._log("[bold]── new session[/bold] — statuses reset")
+
+    def _request_compaction(self, instructions: str | None) -> None:
+        """Manual compaction request. The loop compacts deterministically on its
+        own, so from the dashboard this is informational (tau's compact flag)."""
+        if self._run_active:
+            self._log("[dim]compaction: waiting for the active run "
+                      "(auto-compaction is already active inside the loop)[/dim]")
+            return
+        msg = ("History compaction is automatic inside prove(): after 18 turns, "
+               "old attempts fold into a failed-attempts summary.")
+        if instructions:
+            msg = f"{msg}\n(per-run instructions: {instructions})"
+        self._show_command_message(msg)
+
+    def _rename_session(self, session_id: str, title: str) -> None:
+        """Apply a /name rename to a recorded session (tau's touch_session)."""
+        record = SessionManager().rename(session_id, title)
+        if record is None:
+            self.notify(f"Session not found: {session_id}", severity="error")
+        else:
+            self._log(f"session [cyan]{session_id}[/cyan] renamed to "
+                      f"[bold]{title}[/bold]")
 
     def _apply_command(self, result: CommandResult) -> None:
         """Apply a CommandResult's flags (tau's TUI dispatch order)."""
@@ -685,6 +777,12 @@ class TacticApp(App):
             self._set_theme(result.theme)
         if result.export_requested and result.export_destination:
             self._export_log(result.export_destination)
+        if result.new_session_requested:
+            self._new_session()
+        if result.compact_summary is not None:
+            self._request_compaction(result.compact_summary)
+        if result.rename_requested and result.rename_session_id:
+            self._rename_session(result.rename_session_id, result.rename_title or "")
         if result.exit_requested:
             self.exit()
 
@@ -703,6 +801,7 @@ class TacticApp(App):
         self.tui_settings = TuiSettings(
             auto_copy_selection=self.tui_settings.auto_copy_selection,
             theme=name,
+            notification=self.tui_settings.notification,
         )
         with suppress(Exception):
             self.theme = name
@@ -778,6 +877,8 @@ class TacticApp(App):
         self._run_active = False
         self._sync_text_selection_state()
         self._refresh_status()
+        self._terminal_notification.notify_turn_finished()
+        self._drain_queued_prompts()
 
     def _export_log(self, destination: Path) -> None:
         from textual.selection import SELECT_ALL
@@ -942,6 +1043,15 @@ class TacticApp(App):
         self._sync_text_selection_state()
         self._refresh_status()
         self._log(f"[bold]run finished[/bold] — proved {self.counts['proved']} so far")
+        self._terminal_notification.notify_turn_finished()
+        self._drain_queued_prompts()
+
+    def _drain_queued_prompts(self) -> None:
+        """Prove prompts queued while a run was active (tau's queued follow-ups)."""
+        while self._queued_prompts:
+            text = self._queued_prompts.pop(0)
+            self._log(f"[dim]applying queued:[/dim] {text[:60]}")
+            self._prove_statement(text)
 
     # ---------------------------------------------------------------- clipboard
 

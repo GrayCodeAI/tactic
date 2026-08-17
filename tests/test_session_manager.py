@@ -166,3 +166,28 @@ def test_branch_truncates_history_at_turn(tmp_path: Path) -> None:
     branched = full[: max(0, 1) * 2]
     assert len(branched) == 2
     assert branched[1]["content"] == "  a"  # only the first turn survives
+
+
+def test_session_manager_rename_updates_title(tmp_path: Path) -> None:
+    from agent.session_manager import SessionRecord
+
+    manager = SessionManager(sessions_dir=tmp_path)
+    manager.upsert(SessionRecord(
+        id="20260101-000000-sq_nonneg", path=str(tmp_path / "x.jsonl"),
+        problem_id="sq_nonneg", model="m", created_at=1.0, updated_at=2.0,
+    ))
+    updated = manager.rename("20260101-000000-sq_nonneg", "Clean proof of sq_nonneg")
+    assert updated is not None
+    assert updated.title == "Clean proof of sq_nonneg"
+    assert manager.get("20260101-000000-sq_nonneg").title == "Clean proof of sq_nonneg"
+
+
+def test_session_manager_rename_creates_record_for_unindexed(tmp_path: Path) -> None:
+    sp = tmp_path / "20260101-111111-prime_dvd.jsonl"
+    sp.write_text('{"t": 1.0, "event": "start", "problem_id": "prime_dvd", '
+                  '"statement": "theorem x := by sorry"}\n')
+    manager = SessionManager(sessions_dir=tmp_path)
+    updated = manager.rename("20260101-111111-prime_dvd", "Named after rename")
+    assert updated is not None
+    assert updated.title == "Named after rename"
+    assert manager.get("20260101-111111-prime_dvd").title == "Named after rename"

@@ -27,6 +27,9 @@ class CommandSession(Protocol):
     def session_ids(self) -> Sequence[str]: ...
 
     @property
+    def current_session_id(self) -> str | None: ...
+
+    @property
     def problems_total(self) -> int: ...
 
     @property
@@ -62,6 +65,11 @@ class CommandResult:
     export_requested: bool = False
     export_destination: Path | None = None
     theme: str | None = None
+    new_session_requested: bool = False
+    compact_summary: str | None = None
+    rename_requested: bool = False
+    rename_session_id: str | None = None
+    rename_title: str | None = None
     message: str | None = None
 
 
@@ -226,6 +234,21 @@ def create_default_command_registry() -> CommandRegistry:
         name="system", description="Show the proof loop's system prompt.",
         usage="/system", handler=_system_command,
     ))
+    registry.register(SlashCommand(
+        name="new", description="Start a fresh session: clear statuses, counts and log.",
+        usage="/new", handler=_new_command,
+        aliases=("fresh",), search_terms=("clear", "reset"),
+    ))
+    registry.register(SlashCommand(
+        name="compact", description="Request a manual history compaction summary.",
+        usage="/compact [instructions]", handler=_compact_command,
+        search_terms=("summarize",),
+    ))
+    registry.register(SlashCommand(
+        name="name", description="Rename the current (most recent) session.",
+        usage="/name <new name>", handler=_name_command,
+        search_terms=("title",),
+    ))
     return registry
 
 
@@ -234,6 +257,45 @@ def create_default_command_registry() -> CommandRegistry:
 
 def _quit_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, exit_requested=True)
+
+
+def _new_command(context: CommandContext) -> CommandResult:
+    if context.session.is_running:
+        return CommandResult(handled=True, message="Already running — use /stop first.")
+    return CommandResult(handled=True, new_session_requested=True)
+
+
+def _compact_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, compact_summary=context.args.strip() or None)
+
+
+def _name_command(context: CommandContext) -> CommandResult:
+    args = context.args.strip()
+    session_id = context.session.current_session_id
+    if session_id is None:
+        return CommandResult(handled=True,
+                             message="No recorded session to rename yet.")
+    if not args:
+        return CommandResult(
+            handled=True,
+            message=f"Current session: {session_id}\nUsage: /name <new name>",
+        )
+    try:
+        name = _validated_session_name(args)
+    except ValueError as exc:
+        return CommandResult(handled=True, message=str(exc))
+    return CommandResult(handled=True, rename_requested=True,
+                         rename_session_id=session_id, rename_title=name,
+                         message=f"Session renamed to {name}.")
+
+
+def _validated_session_name(value: str) -> str:
+    name = value.strip()
+    if not name:
+        raise ValueError("Usage: /name <new name>")
+    if any(char in name for char in "\r\n\t"):
+        raise ValueError("Session name must be a single line.")
+    return name
 
 
 def _clear_command(context: CommandContext) -> CommandResult:
@@ -380,6 +442,8 @@ def _hotkeys_command(context: CommandContext) -> CommandResult:
         "v  browse/replay recorded sessions",
         "l  show leaderboard",
         "q  quit",
+        "",
+        "ctrl+k  command palette    ctrl+e  edit last queued prompt",
         "",
         "slash commands work in the prompt: /help lists them",
     ]

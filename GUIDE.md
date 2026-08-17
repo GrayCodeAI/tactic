@@ -151,10 +151,12 @@ Files:
 - `agent/llm.py` — OpenAI-compatible client, ```lean block extraction, cost tracking
 - `agent/lsp.py` — Lean language server client (goal-state feedback)
 - `agent/mcp.py` — MCP server (expose `prove_theorem` to any agent)
-- `agent/commands.py` — slash-command registry (`/help` `/branch` `/theme`, …)
+- `agent/commands.py` — slash-command registry (`/help` `/branch` `/theme` `/new` `/compact` `/name`, …)
 - `agent/autocomplete.py` — slash-command completions
 - `agent/themes.py` — TUI themes (`/theme`, custom in `~/.tactic/themes/*.json`)
 - `agent/terminal_title.py` — terminal tab title + braille spinner while running
+- `agent/terminal_notification.py` — OSC 9/99 desktop notification on run end
+- `agent/session_stats.py` — per-session token/step/cost totals
 - `agent/tui.py` — Textual TUI (browse problems, live proof trace, replay, commands)
 - `agent/main.py` — CLI (`prove` / `bench` / `tui` / `mcp` / `sessions` / `leaderboard`)
 
@@ -163,16 +165,22 @@ Files:
 `tactic tui` (add `-p 4` for parallel workers). Panel layout: problem list,
 log, goals, errors, proof. Keymap: `p` prove selected · `c` custom theorem ·
 `r` run remaining · `w` workers · `s` stop · `v` sessions · `l` leaderboard ·
-`q` quit.
+`ctrl+k` command palette · `ctrl+e` edit last queued prompt · `q` quit.
+
+While a run is active, plain text typed in the prompt bar is queued and
+proved automatically when the run finishes (ctrl+e pulls the last queued one
+back for editing). On completion, a desktop notification is attempted
+(`TACTIC_NOTIFICATION=auto|bell|off`; OSC 9/99 for kitty/ghostty/iTerm).
 
 Slash commands in the prompt bar (complete with `ctrl+space`):
 
 ```
-/help /status /clear /stop /run /quit
+/help /status /clear /stop /run /new /compact /quit
 /prove [<statement>]        prove a custom theorem (editor modal or inline)
 /workers <n>                parallel proof workers
 /resume                     browse sessions (picker) · replay one
 /branch <session> [turn]    re-run a theorem from an earlier turn
+/name <new name>            rename the most recent session
 /export <path>              save the log panel
 /theme [name]               tactic-dark / tactic-light / high-contrast
 /model /system /hotkeys     show model / loop system prompt / keymap

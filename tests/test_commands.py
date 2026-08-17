@@ -54,6 +54,10 @@ class FakeSession:
     def is_running(self) -> bool:
         return False
 
+    @property
+    def current_session_id(self) -> str | None:
+        return self._sessions[0] if self._sessions else None
+
 
 @pytest.fixture
 def registry():
@@ -278,8 +282,8 @@ def test_theme_rejects_unknown(registry, session) -> None:
 
 
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; tactic ships 16 built-ins."""
-    assert len(registry.list_commands()) == 16
+    """20 was tau's alignment number; tactic ships 19 built-ins."""
+    assert len(registry.list_commands()) == 19
 
 
 def test_command_result_defaults(registry, session) -> None:
@@ -287,3 +291,55 @@ def test_command_result_defaults(registry, session) -> None:
     assert r.exit_requested is False
     assert r.message is None
     assert r.workers_requested is None
+
+
+def test_new_requests_fresh_session(registry, session) -> None:
+    result = registry.execute(session, "/new")
+    assert result.new_session_requested is True
+
+
+def test_compact_requests_summary(registry, session) -> None:
+    result = registry.execute(session, "/compact focus on divisibility")
+    assert result.compact_summary == "focus on divisibility"
+
+
+def test_compact_without_args(registry, session) -> None:
+    result = registry.execute(session, "/compact")
+    assert result.compact_summary is None
+    assert result.handled is True
+
+
+def test_name_shows_current_title(registry, session) -> None:
+    result = registry.execute(session, "/name")
+    assert "Current session" in (result.message or "")
+    assert result.rename_requested is False
+
+
+def test_name_without_session(registry) -> None:
+    no_sessions = FakeSession(Path("."), sessions=[])
+    result = registry.execute(no_sessions, "/name")
+    assert "No recorded session" in (result.message or "")
+
+
+def test_name_requests_rename(registry, session) -> None:
+    result = registry.execute(session, "/name my-clean-proof")
+    assert result.rename_requested is True
+    assert result.rename_session_id == "20260101-000000-sq_nonneg"
+    assert result.rename_title == "my-clean-proof"
+
+
+def test_name_rejects_multiline(registry, session) -> None:
+    result = registry.execute(session, "/name bad\nname")
+    assert result.rename_requested is False
+    assert "single line" in (result.message or "")
+
+
+def test_new_refuses_while_running(registry, session) -> None:
+    class _Run(FakeSession):
+        @property
+        def is_running(self) -> bool:
+            return True
+
+    result = registry.execute(_Run(session._tmp_path, session._sessions), "/new")
+    assert result.new_session_requested is False
+    assert "stop" in (result.message or "")
