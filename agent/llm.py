@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from dataclasses import dataclass
 
 from openai import OpenAI
 
 _client: OpenAI | None = None
-_pool = ThreadPoolExecutor(max_workers=4)
 
 # Hard wall-clock cap per LLM call. httpx read-timeouts reset on every byte
-# received, so slow-streaming reasoning endpoints can hang forever without this.
+# received, so slow-streaming reasoning endpoints can hang forever without
+# this. The call runs in a daemon thread so a hung request can never block
+# process exit (ThreadPoolExecutor's atexit join would otherwise do that).
 HARD_TIMEOUT = float(os.environ.get("TACTIC_LLM_TIMEOUT", "180"))
 
 
@@ -32,16 +34,43 @@ def model() -> str:
     return os.environ.get("TACTIC_MODEL", "gpt-4o")
 
 
-def _call(system: str, messages: list[dict], temperature: float) -> str:
-    resp = client().chat.completions.create(
-        model=model(),
-        messages=[{"role": "system", "content": system}, *messages],
-        temperature=temperature,
-        # NOTE: on reasoning endpoints max_tokens covers thinking + answer.
-        # Too small = thinking eats the budget, content comes back empty.
-        max_tokens=16384,
+@dataclass
+class LLMResponse:
+    content: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+def _call(system: str, messages: list[dict], temperature: float) -> LLMResponse:
+    kwargs: dict = {
+        "model": model(),
+        "messages": [{"role": "system", "content": system}, *messages],
+        "temperature": temperature,
+        "max_tokens": 16384,
+    }
+    if os.environ.get("TACTIC_DISABLE_THINKING", "1") == "1" and os.environ.get("OPENAI_BASE_URL"):
+        # Reasoning models (vLLM/HF endpoints serving Qwen3+) put output in a
+        # `reasoning` field and burn minutes when thinking is on. Proofs are
+        # repaired by the compile loop, so fast non-thinking mode wins.
+        kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+    resp = client().chat.completions.create(**kwargs)
+    usage = resp.usage
+    content = resp.choices[0].message.content or ""
+    if not content:
+        content = getattr(resp.choices[0].message, "reasoning", None) or ""
+    return LLMResponse(
+        content=content,
+        prompt_tokens=usage.prompt_tokens if usage else 0,
+        completion_tokens=usage.completion_tokens if usage else 0,
+        total_tokens=usage.total_tokens if usage else 0,
     )
-    return resp.choices[0].message.content or ""
+
+
+class _CallResult:
+    def __init__(self) -> None:
+        self.response: LLMResponse | None = None
+        self.error: str | None = None
 
 
 def chat(
@@ -49,24 +78,34 @@ def chat(
     messages: list[dict],
     temperature: float = 0.2,
     retries: int = 4,
-) -> str:
-    """One LLM turn with a hard wall-clock cap and 429 backoff."""
+) -> LLMResponse:
+    """One LLM turn with a hard wall-clock cap and 429 backoff.
+    Returns LLMResponse with content and token usage."""
     backoff = 5.0
-    for attempt in range(retries + 1):
-        fut = _pool.submit(_call, system, messages, temperature)
+
+    def run(result: _CallResult) -> None:
         try:
-            return fut.result(timeout=HARD_TIMEOUT)
-        except FuturesTimeout:
-            fut.cancel()
-            return f"[LLM error: hard timeout after {HARD_TIMEOUT:.0f}s]"
-        except Exception as e:
-            msg = str(e)
+            result.response = _call(system, messages, temperature)
+        except BaseException as e:  # noqa: BLE001 — report any failure as an error response
+            result.error = str(e)
+
+    for attempt in range(retries + 1):
+        result = _CallResult()
+        worker = threading.Thread(target=run, args=(result,), daemon=True)
+        worker.start()
+        worker.join(timeout=HARD_TIMEOUT)
+        if worker.is_alive():
+            return LLMResponse(content=f"[LLM error: hard timeout after {HARD_TIMEOUT:.0f}s]")
+        if result.error:
+            msg = result.error
             is_rate = "429" in msg or "rate limit" in msg.lower()
             if is_rate and attempt < retries:
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
                 continue
-            return f"[LLM error: {msg}]"
+            return LLMResponse(content=f"[LLM error: {msg}]")
+        return result.response  # type: ignore[return-value]
+    return LLMResponse(content="[LLM error: retries exhausted]")
 
 
 def extract_lean_code(text: str) -> str:
@@ -75,3 +114,30 @@ def extract_lean_code(text: str) -> str:
 
     m = re.search(r"```(?:lean)?\s*\n(.*?)```", text, re.DOTALL)
     return m.group(1).strip() if m else text.strip()
+
+
+# Rough cost estimates per 1M tokens (USD). Update as pricing changes.
+# Covers common OpenAI-compatible endpoints. Free tiers = $0.
+_COST_PER_1M = {
+    "gpt-4o": (5.00, 15.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4-turbo": (10.00, 30.00),
+    "gpt-3.5-turbo": (0.50, 1.50),
+    "qwen/qwen3-8b": (0.0, 0.0),
+    "qwen/qwen3-8b-max-free": (0.0, 0.0),
+    "qwen/qwen3-235b": (0.0, 0.0),
+    "qwen/qwen3-max-free": (0.0, 0.0),
+    "Qwen/Qwen3-8B": (0.0, 0.0),
+    "Qwen/Qwen3-27B": (0.0, 0.0),
+    "Qwen/Qwen3-235B": (0.0, 0.0),
+}
+
+def estimate_cost(prompt_tokens: int, completion_tokens: int, model_name: str | None = None) -> float:
+    """Estimate cost in USD for the given token counts."""
+    model_name = model_name or model()
+    # Try exact match first, then prefix match for versioned names
+    for key, (in_cost, out_cost) in _COST_PER_1M.items():
+        if model_name == key or model_name.startswith(key.rstrip('-*')):
+            return (prompt_tokens * in_cost + completion_tokens * out_cost) / 1_000_000
+    # Unknown model: assume free (conservative for budgeting)
+    return 0.0
