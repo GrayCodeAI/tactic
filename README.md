@@ -30,6 +30,22 @@ export OPENAI_BASE_URL=http://localhost:11434/v1  # e.g. Ollama
 export TACTIC_MODEL=gpt-4o
 ```
 
+### Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | Any OpenAI-compatible provider. |
+| `TACTIC_MODEL` | `gpt-4o` | Model name for `/status` + cost lookup. |
+| `TACTIC_CONTEXT_WINDOW` | per-model table in `llm.py` | Override the context-window size used to compute the auto-compaction budget. |
+| `TACTIC_SESSIONS_DIR` | `~/.tactic/sessions` | Where proof sessions (JSONL) are recorded. |
+| `TACTIC_PROMPTS_DIR` | `~/.tactic/prompts` (or `$TACTIC_CONFIG_DIR/prompts`) | User-level prompt templates (project `<repo>/.tactic/prompts` wins). |
+| `TACTIC_THEMES_DIR` | `~/.tactic/themes` | Custom TUI themes (`*.json`). |
+| `TACTIC_LOGS_DIR` | `~/.tactic/logs` | Diagnostic logs. |
+| `TACTIC_CONFIG_DIR` | `~/.tactic` | Overrides the whole user config home (prompts/themes/logs/trust). |
+| `TACTIC_TRUST` | `always` | Project trust policy: `always` / `never` / `ask`. |
+| `TACTIC_NO_SESSIONS` | `0` | `1` disables session recording. |
+| `TACTIC_BRANCH_SUMMARY` | `1` | `0` disables model-assisted branch summaries. |
+
 ## Usage
 
 ```bash
@@ -42,6 +58,7 @@ tactic tui            # or: tactic tui -p 4 (parallel workers)
 # Slash commands inside the TUI prompt bar (Tab-less: ctrl+space completes):
 #   /help /prove /run /stop /workers <n> /resume <id> /branch <id> [turn]
 #   /export <path> /theme [name] /status /model /system /hotkeys /clear /quit
+#   /usage [session-id|all] /reload
 
 # Run the benchmark (100 theorems, JSON in benchmark/problems.json)
 tactic bench --max-steps 20 --report report.json
@@ -62,7 +79,7 @@ tactic leaderboard --show
 tactic mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
 
 # Tests
-pytest tests/        # 103 tests (loop, compaction, session, TUI, commands)
+pytest tests/        # ~231 tests (loop, compaction, session, TUI, commands)
 ```
 
 ## How it works
@@ -106,12 +123,16 @@ agent/              the agent (Python)
   events.py         event protocol — one stream to trace/session/TUI
   session.py        JSONL sessions (~/.tactic/sessions/)
   session_manager.py index.jsonl upsert/list + history rebuild
+  session_stats.py  per-session token + cost aggregation
   compaction.py     failed-attempts summary (tau's memory model)
   lean.py           lake invocation + diagnostic parsing
   llm.py            LLM provider (OpenAI-compatible) + cost tracking
   lsp.py            Lean language server client (goal-state feedback)
   mcp.py            MCP server (expose prove_theorem to any agent)
-  commands.py       slash-command registry (tau pattern)
+  commands.py       slash-command registry (tau pattern, 22 built-ins)
+  paths.py          canonical user/project dir config (env overrides)
+  context_window.py token-based context estimation + auto-compaction threshold
+  session_usage.py  /usage token + cost dashboard
   autocomplete.py   slash-command completions (tau pattern)
   themes.py         TUI themes as JSON data (tau pattern)
   terminal_title.py OSC terminal title + braille spinner (tau pattern)
@@ -139,8 +160,10 @@ leaderboard.json    local score history (tactic leaderboard)
 - [x] Session export (`/export`, JSONL + self-contained HTML transcript)
 - [x] Project trust gating (`.tactic` protected resources, modal + env policy)
 - [x] Prompt templates (`/prompts` picker, slash expansion, project override)
-- [x] History compaction (failed-attempts summary)
+- [x] History compaction (failed-attempts summary) + token-based auto-compaction
 - [x] Themes + terminal-title chrome + OSC 9/99 completion notification (tau pattern)
 - [x] Queued prompts while running (ctrl+e to edit), /new /compact /name (tau pattern)
+- [x] Session token + cost dashboard (`/usage`, per-session and across all)
+- [x] `/reload` resource change summary (problems/themes/prompts before→after)
 - [x] Results post + public leaderboard (see leaderboard.json)
 - [ ] Public leaderboard site (submissions welcome via PR)

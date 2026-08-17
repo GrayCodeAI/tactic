@@ -176,13 +176,15 @@ Slash commands in the prompt bar (complete with `ctrl+space`):
 
 ```
 /help /status /clear /stop /run /new /compact /quit
+/usage [session|all]          token + cost dashboard
 /prove [<statement>]        prove a custom theorem (editor modal or inline)
-/workers <n>                parallel proof workers
-/resume                     browse sessions (picker) · replay one
-/branch <session> [turn]    re-run a theorem from an earlier turn (model summarizes
-                            the old branch first; TACTIC_BRANCH_SUMMARY=0 disables)
-/name <new name>            rename the most recent session
-/export <path>              save the session transcript (html/jsonl by suffix)
+ /workers <n>                parallel proof workers
+ /resume                     browse sessions (picker) · replay one
+ /branch <session> [turn]    re-run a theorem from an earlier turn (model summarizes
+                             the old branch first; TACTIC_BRANCH_SUMMARY=0 disables)
+ /reload                     reload problems/themes/prompts + log before→after summary
+ /name <new name>            rename the most recent session
+ /export <path>              save the session transcript (html/jsonl by suffix)
 /prompts                    pick a markdown prompt template to apply
 /theme [name]               tactic-dark / tactic-light / high-contrast
 /model /system /hotkeys     show model / loop system prompt / keymap
@@ -207,7 +209,7 @@ attempts so it doesn't repeat the same dead ends.
   need more; strong models usually finish in ≤5.
 - `TACTIC_MODEL` — bigger model = fewer steps, higher quality. For
   proof-writing, 235B-class >> 27B-class >> 7B-class.
-- History is compacted (not truncated): once it passes 18 turns, old attempts are folded into a failed-attempts summary so the model stops re-trying dead ends (last 12 turns stay verbatim).
+- History is compacted (not truncated): once it passes 18 turns, old attempts are folded into a failed-attempts summary so the model stops re-trying dead ends (last 12 turns stay verbatim). Auto-compaction also triggers at 70% of the model's context window (`TACTIC_CONTEXT_WINDOW` overrides; `context_window.py`).
 - Temperature is fixed at 0.2 in `agent/llm.py` (proofs want determinism).
 
 ---
