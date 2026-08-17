@@ -738,6 +738,9 @@ class TacticApp(App):
         """Resolve project-input trust off the mount path, then populate the
         problem list only when trusted. Runs as a worker so the modal's
         push_screen_wait can be served by the message pump."""
+        self._register_tactic_themes()
+        with suppress(Exception):
+            self.theme = self.tui_settings.theme
         self._trust_summary, self._trust_resolution = (
             await self._resolve_project_trust(mode)
         )
@@ -746,10 +749,12 @@ class TacticApp(App):
             self._log("[red]project inputs untrusted — problems not loaded; "
                       "set TACTIC_TRUST=always to allow[/red]")
             return
+        self.problems = load_problems()
         if not self.problems:
             self._log("[red]benchmark/problems.json not found[/red]")
             return
         problems_list = self.query_one(ListView)
+        problems_list.clear()
         for p in self.problems:
             problems_list.append(ProblemRow(p))
         model = os.environ.get("TACTIC_MODEL", "gpt-4o (default)")
@@ -974,6 +979,8 @@ class TacticApp(App):
             self.action_leaderboard()
         if result.prompts_requested:
             self.action_prompts()
+        if result.reload_requested:
+            self._reload_resources()
         if result.theme:
             self._set_theme(result.theme)
         if result.export_requested and result.export_destination:
@@ -1351,6 +1358,11 @@ class TacticApp(App):
             )
             return
         self.push_screen(PromptsScreen(templates), callback=self._prompt_template_chosen)
+
+    def _reload_resources(self) -> None:
+        """Re-run discovery: trust, problems, themes (tau's /reload)."""
+        mode = os.environ.get("TACTIC_TRUST", "always")
+        self.run_worker(self._mount_trust_flow(mode), name="project-trust-reload")
 
     def _prompt_template_chosen(self, name: str | None) -> None:
         if not name:

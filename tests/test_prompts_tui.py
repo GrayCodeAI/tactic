@@ -109,3 +109,42 @@ def test_command_registry_has_prompts_command() -> None:
     registry = create_default_command_registry()
     names = {cmd.name for cmd in registry.list_commands()}
     assert "prompts" in names
+
+
+def test_reload_command_flag() -> None:
+    registry = create_default_command_registry()
+    result = registry.execute(None, "/reload")
+    assert result.handled
+    assert result.reload_requested
+
+
+def test_reload_reloads_problems_from_disk(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TACTIC_TRUST", "always")
+    problems_file = Path(__file__).resolve().parent.parent / "benchmark" / "problems.json"
+    original = problems_file.read_text()
+    try:
+        async def scenario() -> None:
+            app = TacticApp()
+            async with app.run_test(size=(140, 40)) as pilot:
+                for _ in range(50):
+                    if app._trust_resolution is not None:
+                        break
+                    await pilot.pause(0.05)
+                assert app.problems
+                count_before = len(app.problems)
+                import json as _json
+
+                problems = _json.loads(original)
+                del problems[:1]
+                problems_file.write_text(_json.dumps(problems))
+                app._apply_command(create_default_command_registry().execute(None, "/reload"))
+                for _ in range(50):
+                    if len(app.problems) != count_before:
+                        break
+                    await pilot.pause(0.05)
+                assert len(app.problems) == count_before - 1
+                app.exit()
+
+        asyncio.run(scenario())
+    finally:
+        problems_file.write_text(original)

@@ -67,10 +67,10 @@ def test_search_term_completion_falls_back_to_canonical_name():
 
 def test_search_terms_rank_after_direct_names():
     registry = create_default_command_registry()
-    # "/r": direct matches /resume, /run; "/prove" arrives later via the
-    # "run theorem" search term
+    # "/r": direct matches /reload, /resume, /run; "/prove" arrives later
+    # via the "run theorem" search term
     names = _names(command_completions(registry, "/r"))
-    assert names[:2] == ["/resume", "/run"]
+    assert names[:3] == ["/reload", "/resume", "/run"]
     assert "/prove" in names
 
 
