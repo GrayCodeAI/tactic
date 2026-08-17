@@ -34,6 +34,31 @@ def model() -> str:
     return os.environ.get("TACTIC_MODEL", "gpt-4o")
 
 
+# Rough context-window estimates per model family. Used by context_window.py to
+# compute the automatic compaction budget (tau parity). Env override
+# TACTIC_CONTEXT_WINDOW short-circuits this lookup.
+_DEFAULT_CONTEXT_WINDOW_TOKENS = {
+    "gpt-4o": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8_192,
+    "gpt-3.5-turbo": 16_384,
+}
+DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000
+DEFAULT_COMPACTION_RESERVE_TOKENS = 16_384
+
+
+def context_window_tokens(model_name: str | None = None) -> int:
+    """Return the best-known context window for the active/default model."""
+    override = os.environ.get("TACTIC_CONTEXT_WINDOW")
+    if override and override.isdigit():
+        return int(override)
+    name = model_name or model()
+    for prefix, window in _DEFAULT_CONTEXT_WINDOW_TOKENS.items():
+        if name == prefix or name.startswith(prefix):
+            return window
+    return DEFAULT_CONTEXT_WINDOW_TOKENS
+
+
 @dataclass
 class LLMResponse:
     content: str

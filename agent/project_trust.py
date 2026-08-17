@@ -168,8 +168,10 @@ class ProjectTrustStore:
     """Versioned, locked, atomically replaced trust decision store."""
 
     def __init__(self, config_dir: Path | None = None) -> None:
-        override = os.environ.get("TACTIC_CONFIG_DIR")
-        self.home = config_dir or (Path(override) if override else Path.home() / ".tactic")
+        from .paths import TacticPaths
+
+        base = TacticPaths()
+        self.home = config_dir or base.config_dir
         self.path = self.home / "trust.json"
         self.lock_path = self.home / "trust.json.lock"
         self.pending_path = self.home / "trust.json.pending"

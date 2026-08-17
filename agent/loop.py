@@ -16,6 +16,10 @@ from pathlib import Path
 
 from . import events, lean, llm, lsp
 from .compaction import compact_history
+from .context_window import (
+    auto_compaction_threshold_for_context_window,
+    estimate_context_tokens,
+)
 from .session import Session, read_session
 from .session_manager import SessionManager, SessionRecord, history_from_records
 
@@ -339,6 +343,12 @@ def prove(
         # summary so the model stops re-trying them (tau's memory model).
         n_msgs = len(history)
         history, summary = compact_history(history)
+        # tau parity: if the estimated context crosses the auto-compaction
+        # threshold (70% of the model's context window) without the turn
+        # count having triggered yet, compact eagerly.
+        threshold = auto_compaction_threshold_for_context_window(llm.context_window_tokens())
+        if summary is None and threshold and estimate_context_tokens(SYSTEM, history) >= threshold:
+            history, summary = compact_history(history, keep_turns=8, compact_at_turns=14)
         if summary:
             emit("compaction", dropped=n_msgs - len(history))
 

@@ -132,7 +132,9 @@ TAU_DARK_THEME = BUILTIN_TUI_THEMES["tactic-dark"]  # default, tau naming parity
 
 
 def themes_dir() -> Path:
-    return Path.home() / ".tactic" / "themes"
+    from .paths import TacticPaths
+
+    return TacticPaths().themes_dir
 
 
 def load_custom_themes() -> None:

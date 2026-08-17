@@ -18,10 +18,9 @@ from pathlib import Path
 
 
 def _default_dir() -> Path:
-    override = os.environ.get("TACTIC_SESSIONS_DIR")
-    if override:
-        return Path(override)
-    return Path.home() / ".tactic" / "sessions"
+    from .paths import TacticPaths
+
+    return TacticPaths().sessions_dir
 
 
 def sessions_dir() -> Path:

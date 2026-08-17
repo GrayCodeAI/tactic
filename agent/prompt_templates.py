@@ -58,12 +58,12 @@ class PromptTemplate:
 
 def prompt_templates_dirs() -> list[Path]:
     """Return the prompt template namespaces, project highest precedence."""
-    override = os.environ.get("TACTIC_PROMPTS_DIR")
-    if override:
-        return [Path(override)]
-    from .tui import REPO
+    from .paths import TacticPaths
 
-    return [Path.home() / ".tactic" / "prompts", REPO / ".tactic" / "prompts"]
+    base = TacticPaths()
+    if os.environ.get("TACTIC_PROMPTS_DIR"):
+        return [base.prompts_dir]
+    return [base.prompts_dir, base.project_prompts_dir]
 
 
 def is_prompt_template_candidate(path: Path) -> bool:
