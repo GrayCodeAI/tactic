@@ -44,6 +44,7 @@ from textual.widgets.option_list import Option
 from . import session as sess
 from .autocomplete import command_completions
 from .commands import CommandResult, create_default_command_registry
+from .file_drop import normalize_dropped_paths
 from .loop import prove
 from .session_manager import SessionManager
 from .session_stats import calculate_session_stats
@@ -118,6 +119,36 @@ class SelectableRichLog(RichLog):
         if not selected:
             return None
         return selected, "\n"
+
+
+class PromptInput(Input):
+    """Single-line prompt with (single) file-drop insertion (tau Parity:
+    terminal drops arrive as a Paste; the app reroutes them here via
+    `insert_pasted_text` so the normalized paths land with separating
+    whitespace)."""
+
+    def _insert_dropped_paths(self, inserted: str) -> None:
+        """Insert dropped paths at the cursor, separated from surrounding text."""
+        position = self.cursor_position
+        before = self.value[:position]
+        after = self.value[position:]
+        if before and not before[-1].isspace():
+            inserted = f" {inserted}"
+        if not after or not after[0].isspace():
+            inserted = f"{inserted} "
+        self.insert_text_at_cursor(inserted)
+
+    def insert_pasted_text(self, text: str) -> None:
+        """Insert pasted text that Textual could not deliver to this widget.
+
+        Used for drops that arrive while the terminal is unfocused, where no
+        default paste handler runs (tau's insert_pasted_text parity).
+        """
+        dropped = normalize_dropped_paths(text)
+        if dropped is not None:
+            self._insert_dropped_paths(dropped)
+            return
+        self.insert_text_at_cursor(text)
 
 
 def render_event(ev: dict, pid: str, log: RichLog, goals: RichLog,
@@ -449,6 +480,68 @@ class SessionsScreen(ModalScreen[Path | None]):
             self.dismiss(None)
 
 
+class TrustScreen(ModalScreen[str | None]):
+    """First-run project-input trust decision (tau's trust modal, trimmed).
+
+    Protected inputs are listed by category/count only — the modal never
+    displays their contents.
+    """
+
+    CSS = """
+    TrustScreen { align: center middle; }
+    #trust-box {
+        width: 92; height: 80%;
+        background: $panel; border: round $primary; padding: 1 2;
+    }
+    """
+
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    CHOICES = ("trust-exact", "trust-parent", "trust-run",
+               "decline-exact", "decline-run")
+
+    def __init__(self, request: object) -> None:
+        super().__init__()
+        self._request = request
+
+    def compose(self) -> ComposeResult:
+        from .project_trust import ProjectTrustRequest
+
+        request = self._request
+        assert isinstance(request, ProjectTrustRequest)
+        counts = ", ".join(
+            f"[dim]{category}[/dim] {request.resources.counts[category]}"
+            for category in request.resources.categories
+        )
+        inherited = (
+            f"\ninherits [cyan]{request.inherited_entry.decision}[/cyan] "
+            f"from {request.inherited_entry.path.value}"
+            if request.inherited_entry is not None
+            else ""
+        )
+        with Vertical(id="trust-box"):
+            yield Static(
+                "[bold]Trust project inputs?[/bold]\n"
+                f"{request.cwd.value}{inherited}\n"
+                f"protected: {counts}\n"
+                "[dim]project trust is an input-loading guard, not a sandbox[/dim]\n"
+            )
+            yield OptionList(*[Option(c) for c in self.CHOICES], id="trust-list")
+            yield Static("↑/↓ select · Enter decide · esc cancel",
+                         classes="hint")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option.id:
+            self.dismiss(event.option.id)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class TacticApp(App):
     """Interactive proof agent dashboard."""
 
@@ -591,7 +684,7 @@ class TacticApp(App):
                     yield SelectableRichLog(id="proof", wrap=False, markup=True)
         with Vertical(id="prompt-box"):
             yield Static("", id="prompt-completions")
-            yield Input(placeholder="type a slash command (/help) + Enter", id="prompt")
+            yield PromptInput(placeholder="type a slash command (/help) + Enter", id="prompt")
         yield Static(self._status_text(), id="status-bar")
         yield Footer()
 
@@ -600,6 +693,23 @@ class TacticApp(App):
         with suppress(Exception):
             self.theme = self.tui_settings.theme
         self._sync_terminal_title()
+        mode = os.environ.get("TACTIC_TRUST", "always")
+        self._trust_summary = None
+        self._trust_resolution = None
+        self.run_worker(self._mount_trust_flow(mode), name="project-trust")
+
+    async def _mount_trust_flow(self, mode: str) -> None:
+        """Resolve project-input trust off the mount path, then populate the
+        problem list only when trusted. Runs as a worker so the modal's
+        push_screen_wait can be served by the message pump."""
+        self._trust_summary, self._trust_resolution = (
+            await self._resolve_project_trust(mode)
+        )
+        if not self._trust_resolution or not self._trust_resolution.trusted:
+            self.problems = []
+            self._log("[red]project inputs untrusted — problems not loaded; "
+                      "set TACTIC_TRUST=always to allow[/red]")
+            return
         if not self.problems:
             self._log("[red]benchmark/problems.json not found[/red]")
             return
@@ -610,6 +720,46 @@ class TacticApp(App):
         self._log(f"model: [cyan]{model}[/cyan] — {len(self.problems)} problems loaded")
         self._log("[dim]p prove · c custom · r run rest · w workers · s stop · "
                   "v sessions · l board · q quit[/dim]")
+
+    async def _resolve_project_trust(self, mode: str):
+        """Resolve project-input trust for the repo (tau parity; the TUI
+        defaults to always so headless/tests are unaffected, and
+        TACTIC_TRUST=ask enables the interactive modal)."""
+        from .project_trust import (
+            ProjectTrustCoordinator,
+            ProjectTrustStore,
+            format_trust_diagnostic,
+        )
+
+        async def ask(request):
+            return await self.push_screen_wait(
+                TrustScreen(request)
+            ) if self._trust_user_visible() else None
+
+        if mode == "ask":
+            default = "ask"
+            interactive = self._trust_user_visible()
+        else:
+            default = "always" if mode == "always" else "never"
+            interactive = False
+        store = ProjectTrustStore()
+        try:
+            summary, resolution = await ProjectTrustCoordinator(store).resolve(
+                REPO, default=default, interactive=interactive, prompt=ask
+            )
+        except Exception as exc:  # noqa: BLE001 - trust must never crash the TUI
+            self._log(f"[red]project trust failed closed: {exc}[/red]")
+            summary, resolution = None, None
+        if summary is not None and resolution is not None:
+            self._log(f"[dim]{format_trust_diagnostic(summary, resolution)}[/dim]")
+        return summary, resolution
+
+    def _trust_user_visible(self) -> bool:
+        """Whether an interactive trust prompt can reach the user."""
+        try:
+            return bool(os.environ.get("TERM") or os.environ.get("TACTIC_TRUST") == "ask")
+        except Exception:  # noqa: BLE001
+            return False
 
     def _status_text(self) -> str:
         done = self.counts["proved"] + self.counts["failed"] + self.counts["stopped"]
@@ -881,6 +1031,24 @@ class TacticApp(App):
         self._drain_queued_prompts()
 
     def _export_log(self, destination: Path) -> None:
+        from .session_export import export_session
+
+        session_id = self.current_session_id
+        if session_id is not None:
+            entries = sess.read_session(self.session_dir / f"{session_id}.jsonl")
+            if entries:
+                try:
+                    export_session(
+                        entries,
+                        destination,
+                        title=f"Tactic session {session_id}",
+                        source=str(self.session_dir / f"{session_id}.jsonl"),
+                    )
+                except OSError as exc:
+                    self.notify(f"Export failed: {exc}", severity="error")
+                    return
+                self.notify(f"Session exported to {destination}")
+                return
         from textual.selection import SELECT_ALL
 
         log = self.query_one("#log", SelectableRichLog)
@@ -1122,6 +1290,23 @@ class TacticApp(App):
 
     def action_quit_app(self) -> None:
         self.exit()
+
+    async def on_event(self, event: events.Event) -> None:
+        """Reroute drops/pastes that target the prompt (tau file-drop parity).
+
+        Textual dispatches every MRO handler for a message, so an
+        `_on_paste` override on the input would double-insert (our spaced
+        version plus the built-in verbatim one).  Instead intercept here,
+        before the built-in forwarding runs, and hand the text to the
+        prompt's `insert_pasted_text` when focus is the prompt or nothing.
+        """
+        if isinstance(event, events.Paste):
+            prompt = self.query_one_optional("#prompt", PromptInput)
+            if prompt is not None and (self.focused is None or self.focused is prompt):
+                event.stop()
+                prompt.insert_pasted_text(event.text)
+                return
+        await super().on_event(event)
 
 
 def main(parallel: int = 1) -> None:
