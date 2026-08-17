@@ -137,6 +137,7 @@ def prove(
     record_session: bool = True,
     resume_from: str | None = None,
     branch_at: int | None = None,
+    skip_hammers: bool = False,
 ) -> Result:
     t0 = time.time()
     signature = _split_signature(statement)
@@ -264,8 +265,9 @@ def prove(
                      branch_at=branch_at)
 
     # ---- Hammer pre-pass: try one-shot tactics before spending LLM tokens.
-    # Skipped on resume — the previous run already showed they don't work here.
-    if body is None:
+    # Skipped on resume — the previous run already showed they don't work here —
+    # and when the caller already knows they failed (retries).
+    if body is None and not skip_hammers:
         for i, hammer in enumerate(HAMMERS, 1):
             if stop_requested():
                 break

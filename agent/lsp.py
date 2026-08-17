@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import threading
 from pathlib import Path
+from typing import Self
 from urllib.parse import quote
 
 LSP_TIMEOUT = float(os.environ.get("TACTIC_LSP_TIMEOUT", "90"))
@@ -114,8 +116,18 @@ class LeanLSP:
             return None
 
     def _kill(self) -> None:
+        """Kill the entire LSP process group.
+
+        `lake env lean --server` spawns `lean --server`, which spawns one
+        `lean --worker` (~1GB) per file. Killing only the direct child
+        orphans the rest; killing the session group (start_new_session)
+        takes the whole tree down.
+        """
         if self._proc and self._proc.poll() is None:
-            self._proc.kill()
+            try:
+                os.killpg(os.getpgid(self._proc.pid), signal.SIGKILL)
+            except OSError:
+                self._proc.kill()
 
     def _ensure_started(self) -> bool:
         if self._proc and self._proc.poll() is None:
@@ -128,6 +140,7 @@ class LeanLSP:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 bufsize=0,
+                start_new_session=True,  # own process group → killpg in close()
             )
         except OSError:
             return False
@@ -245,7 +258,23 @@ class LeanLSP:
     def close(self) -> None:
         with self._lock:
             if self._proc is not None:
-                if self._proc.poll() is None:
-                    self._proc.kill()
+                self._kill()
+                try:
+                    self._proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
                 self._proc = None
+            self._opened = False
             self.version = 1
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:  # noqa: S110, BLE001 — never let finalization raise
+            pass

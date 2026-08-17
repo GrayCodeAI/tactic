@@ -29,11 +29,12 @@ def cmd_prove(args: argparse.Namespace) -> int:
 
 
 def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: bool = True,
-               record_session: bool = True) -> tuple[dict, int, float]:
+               record_session: bool = True, skip_hammers: bool = False) -> tuple[dict, int, float]:
     """Prove a single problem. Returns (result_dict, tokens, cost)."""
     print(f"[{idx}/{total}] {p['id']}: {p['statement'][:70]}...")
     r = prove(p["statement"], max_steps=max_steps, verbose=False, problem_id=p["id"],
-              goal_feedback=goal_feedback, record_session=record_session)
+              goal_feedback=goal_feedback, record_session=record_session,
+              skip_hammers=skip_hammers)
     result = {
         "id": p["id"],
         "proved": r.proved,
@@ -67,7 +68,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
         print(f"Running {len(problems)} problems in parallel (workers={args.parallel})...")
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
             futures = [
-                executor.submit(_prove_one, p, args.max_steps, i, len(problems), goal_feedback, args.record)
+                executor.submit(_prove_one, p, args.max_steps, i, len(problems),
+                                goal_feedback, args.record, args.no_hammers)
                 for i, p in enumerate(problems, start + 1)
             ]
             for fut in concurrent.futures.as_completed(futures):
@@ -77,7 +79,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
                 total_cost += cost
     else:
         for i, p in enumerate(problems, start + 1):
-            result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems), goal_feedback, args.record)
+            result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems),
+                                              goal_feedback, args.record, args.no_hammers)
             results.append(result)
             total_tokens += tokens
             total_cost += cost
@@ -232,6 +235,8 @@ def cli() -> None:
     b.add_argument("--parallel", type=int, default=1, help="number of parallel workers (default=1, sequential)")
     b.add_argument("--no-goal-feedback", action="store_true",
                    help="disable LSP goal-state feedback")
+    b.add_argument("--no-hammers", action="store_true",
+                   help="skip the hammer pre-pass (for retries of known failures)")
     b.add_argument("--no-record", action="store_false", dest="record",
                    help="disable JSONL session recording")
     b.set_defaults(fn=cmd_bench, record=True)
