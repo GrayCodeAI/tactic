@@ -8,8 +8,8 @@ type-checks. Ends with ∎
 
 Working agent, 100-problem benchmark, interactive TUI, MCP server,
 session resume/branching, history compaction, theming.
-Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 66/100**
-(trivial 20/20, easy 23/30, medium 19/30, hard 4/20), $0 cost.
+Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 68/100**
+(trivial 20/20, easy 23/30, medium 21/30, hard 4/20), $0 cost (free HF endpoint).
 
 ## Setup
 
@@ -133,8 +133,10 @@ leaderboard.json    local score history (tactic leaderboard)
 - [x] Leaderboard (local: `tactic leaderboard`; public site TBD)
 - [x] TUI: custom prove, session replay, parallel workers, Errors panel
 - [x] Clipboard (tau port: pyperclip + OSC-52 fallback, selection-aware)
-- [x] Slash commands + completions (tau pattern, 16 built-ins)
+- [x] Slash commands + completions (tau pattern, 19 built-ins) + ctrl+k palette
 - [x] Session resume + branching (`/branch <session> [turn]`)
 - [x] History compaction (failed-attempts summary)
-- [x] Themes + terminal-title chrome (tau pattern)
-- [ ] Public leaderboard + first results post
+- [x] Themes + terminal-title chrome + OSC 9/99 completion notification (tau pattern)
+- [x] Queued prompts while running (ctrl+e to edit), /new /compact /name (tau pattern)
+- [x] Results post + public leaderboard (see leaderboard.json)
+- [ ] Public leaderboard site (submissions welcome via PR)
