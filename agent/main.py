@@ -117,6 +117,7 @@ def cmd_tui(args: argparse.Namespace) -> int:
 def cmd_sessions(args: argparse.Namespace) -> int:
     from . import session
     from .events import format as fmt_event
+    from .session_stats import calculate_session_stats
 
     sessions = session.list_sessions()
     if not sessions:
@@ -147,11 +148,14 @@ def cmd_sessions(args: argparse.Namespace) -> int:
         recs = session.read_session(sp)
         start = next((r for r in recs if r.get("event") == "start"), {})
         result = next((r for r in recs if r.get("event") == "result"), {})
+        stats = calculate_session_stats(recs)
         status = "✓" if result.get("proved") else ("◼" if result.get("stopped") else "✘")
         pid = start.get("problem_id") or "?"
         steps = result.get("steps", "?")
         secs = result.get("seconds", "?")
-        print(f"{status} {sp.stem:<48} {pid!s:<28} steps={steps} {secs}s")
+        cost_str = f" cost≈${stats.estimated_cost:.2f}" if stats.estimated_cost else ""
+        print(f"{status} {sp.stem:<48} {pid!s:<28} steps={steps} {secs}s "
+              f"{stats.total_tokens} tokens{cost_str}")
     return 0
 
 
