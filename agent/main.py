@@ -15,6 +15,19 @@ from .loop import prove
 
 
 def cmd_prove(args: argparse.Namespace) -> int:
+    from .rendering import create_event_renderer
+
+    mode = args.output
+    if mode in ("json", "transcript"):
+        # Stream output through a renderer instead of the default text summary.
+        renderer = create_event_renderer(mode)
+        r = prove(args.statement, max_steps=args.max_steps,
+                  goal_feedback=not args.no_goal_feedback,
+                  record_session=not args.no_record,
+                  on_event=renderer.render, verbose=False)
+        ok = renderer.finish()
+        return 0 if ok and r.proved else 1
+
     print(f"Proving:\n{args.statement}\n")
     r = prove(args.statement, max_steps=args.max_steps,
               goal_feedback=not args.no_goal_feedback,
@@ -111,6 +124,50 @@ def cmd_tui(args: argparse.Namespace) -> int:
         print("TUI requires the optional 'textual' dependency: pip install 'tactic[tui]'")
         return 1
     tui_main(parallel=args.parallel)
+    return 0
+
+
+def cmd_usage(args: argparse.Namespace) -> int:
+    """Print the token/cost dashboard (/usage parity, Batch 4.3)."""
+    from pathlib import Path
+
+    from . import session
+    from .session_manager import SessionManager
+    from .session_usage import collect_session_usage, render_usage_dashboard
+
+    model = os.environ.get("TACTIC_MODEL") or None
+    arg = (args.id or "").strip().lower()
+
+    if not arg or arg == "all":
+        # Aggregate across recorded sessions.
+        manager = SessionManager()
+        records: list[dict] = []
+        count = 0
+        for rec in manager.list_sessions():
+            if not rec.path or not Path(rec.path).exists():
+                continue
+            records.extend(session.read_session(Path(rec.path)))
+            count += 1
+        if not records:
+            print(f"No sessions in {session.sessions_dir()}")
+            return 0
+        usage = collect_session_usage(records, model=model)
+        print(f"Usage across {count} session(s)")
+        print(render_usage_dashboard(usage))
+        return 0
+
+    # Single session by id (allow suffix match, like cmd_sessions).
+    path = None
+    for sp in session.list_sessions():
+        if sp.stem == arg or str(sp).endswith(arg):
+            path = sp
+            break
+    if path is None:
+        print(f"session not found: {args.id}")
+        return 1
+    usage = collect_session_usage(session.read_session(path), model=model)
+    print(f"Usage for {path.stem}")
+    print(render_usage_dashboard(usage))
     return 0
 
 
@@ -229,6 +286,8 @@ def cli() -> None:
                    help="disable LSP goal-state feedback")
     p.add_argument("--no-record", action="store_true",
                    help="disable JSONL session recording")
+    p.add_argument("--output", choices=["text", "json", "transcript"], default="text",
+                   help="output mode: text (default summary), json event stream, or transcript")
     p.set_defaults(fn=cmd_prove)
 
     b = sub.add_parser("bench", help="run the benchmark suite")
@@ -259,6 +318,11 @@ def cli() -> None:
     s.add_argument("--limit", type=int, default=20, help="max sessions to list")
     s.add_argument("--raw", action="store_true", help="also dump raw JSON records")
     s.set_defaults(fn=cmd_sessions)
+
+    u = sub.add_parser("usage", help="token/cost dashboard for one or all sessions (/usage parity)")
+    u.add_argument("id", nargs="?", default=None,
+                   help="session id (or 'all' / empty for all sessions)")
+    u.set_defaults(fn=cmd_usage)
 
     lb = sub.add_parser("leaderboard", help="record a benchmark score / show the board")
     lb.add_argument("--run", action="store_true",

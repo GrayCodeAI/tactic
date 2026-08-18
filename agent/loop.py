@@ -20,6 +20,11 @@ from .context_window import (
     auto_compaction_threshold_for_context_window,
     estimate_context_tokens,
 )
+from .diagnostics import (
+    ProofCallDiagnosticContext,
+    ProofCallDiagnosticLogger,
+    new_proof_call_run_id,
+)
 from .session import Session, read_session
 from .session_manager import SessionManager, SessionRecord, history_from_records
 
@@ -156,6 +161,18 @@ def prove(
     session_open = session.open() if record_session else False
     session_path = str(session.path) if session_open else None
     manager = SessionManager()
+
+    # Structured failure log (tau AgentCallDiagnosticLogger parity): machine-
+    # readable JSONL of LLM failures under the paths logs_dir, alongside the
+    # human-readable llm_error event stream.
+    diag = ProofCallDiagnosticLogger.from_paths()
+    diag_context = ProofCallDiagnosticContext(
+        model=llm.model(),
+        cwd=LEAN_DIR,
+        session_id=session.id,
+        run_id=new_proof_call_run_id(),
+        problem_id=problem_id,
+    )
 
     def emit(event: str, **payload) -> None:
         """Single emit path: trace + session JSONL + callback + CLI print."""
@@ -294,6 +311,8 @@ def prove(
                 return finish(True, i, target_file.read_text(), 0.0)
         emit("llm_start")
         body = "  sorry"  # placeholder so the first build reports sorry
+    if body is None:
+        body = "  sorry"  # hammers skipped and no resume seed: start from sorry
     write_file(body)
 
     for step in range(1, max_steps + 1):
@@ -326,6 +345,9 @@ def prove(
         resp = llm.chat(SYSTEM, history)
         if resp.content.startswith("[LLM error"):
             emit("llm_error", step=step, error=resp.content)
+            diag.log_llm_error(
+                context=diag_context, phase=f"step-{step}", error=resp.content
+            )
             history.append({"role": "assistant", "content": "(no response)"})
             continue
         new_body = _extract_body(resp.content)

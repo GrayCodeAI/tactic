@@ -45,6 +45,9 @@ export TACTIC_MODEL=gpt-4o
 | `TACTIC_TRUST` | `always` | Project trust policy: `always` / `never` / `ask`. |
 | `TACTIC_NO_SESSIONS` | `0` | `1` disables session recording. |
 | `TACTIC_BRANCH_SUMMARY` | `1` | `0` disables model-assisted branch summaries. |
+| `TACTIC_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
+| `TACTIC_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `TACTIC_THINKING` wins. |
+| `TACTIC_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
 
 ## Usage
 
@@ -71,6 +74,14 @@ tactic sessions                      # list recent sessions
 tactic sessions 20260817-015954-proof       # replay one
 tactic sessions 20260817-015954-proof --raw # with raw JSON records
 
+# Token/cost dashboard (per session or across all)
+tactic usage                         # all sessions
+tactic usage 20260817-015954-proof   # one session
+
+# Machine-readable proof output
+tactic prove "..." --output json         # one JSON event per line
+tactic prove "..." --output transcript   # colored step transcript
+
 # Local leaderboard: run a subset and record the score
 tactic leaderboard --run --problems benchmark/trivial.json --name my-model
 tactic leaderboard --show
@@ -79,7 +90,7 @@ tactic leaderboard --show
 tactic mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
 
 # Tests
-pytest tests/        # ~231 tests (loop, compaction, session, TUI, commands)
+pytest tests/        # ~272 tests (loop, compaction, session, TUI, commands)
 ```
 
 ## How it works
@@ -133,13 +144,16 @@ agent/              the agent (Python)
   paths.py          canonical user/project dir config (env overrides)
   context_window.py token-based context estimation + auto-compaction threshold
   session_usage.py  /usage token + cost dashboard
+  thinking.py       reasoning levels → provider kwargs (tau thinking port)
+  diagnostics.py    structured JSONL failure log (~/.tactic/logs/, tau port)
+  rendering.py      --output text/json/transcript renderers (tau rendering port)
   autocomplete.py   slash-command completions (tau pattern)
   themes.py         TUI themes as JSON data (tau pattern)
   terminal_title.py OSC terminal title + braille spinner (tau pattern)
   tui.py            Textual TUI (problems, live trace, replay, commands)
-  main.py           CLI (prove / bench / tui / mcp / sessions / leaderboard)
+  main.py           CLI (prove / bench / tui / mcp / sessions / usage / leaderboard)
 benchmark/          fixed theorem set + runner + merge_reports.py
-tests/              pytest suite (209 tests)
+tests/              pytest suite (272 tests)
 leaderboard.json    local score history (tactic leaderboard)
 ```
 
@@ -165,5 +179,6 @@ leaderboard.json    local score history (tactic leaderboard)
 - [x] Queued prompts while running (ctrl+e to edit), /new /compact /name (tau pattern)
 - [x] Session token + cost dashboard (`/usage`, per-session and across all)
 - [x] `/reload` resource change summary (problems/themes/prompts before→after)
+- [x] Thinking levels, structured failure log, `--output` renderers, `tactic usage` CLI (tau port)
 - [x] Results post + public leaderboard (see leaderboard.json)
 - [ ] Public leaderboard site (submissions welcome via PR)

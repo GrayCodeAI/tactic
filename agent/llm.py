@@ -68,17 +68,26 @@ class LLMResponse:
 
 
 def _call(system: str, messages: list[dict], temperature: float) -> LLMResponse:
+    from .thinking import reasoning_effort_for_level, thinking_level_from_env
+
     kwargs: dict = {
         "model": model(),
         "messages": [{"role": "system", "content": system}, *messages],
         "temperature": temperature,
         "max_tokens": 16384,
     }
-    if os.environ.get("TACTIC_DISABLE_THINKING", "1") == "1" and os.environ.get("OPENAI_BASE_URL"):
-        # Reasoning models (vLLM/HF endpoints serving Qwen3+) put output in a
-        # `reasoning` field and burn minutes when thinking is on. Proofs are
-        # repaired by the compile loop, so fast non-thinking mode wins.
+    level = thinking_level_from_env()
+    if level == "off" and os.environ.get("OPENAI_BASE_URL"):
+        # Thinking off (the tactic default, agent/thinking.py): vLLM/HF
+        # endpoints serving Qwen3+ put output in a `reasoning` field and
+        # burn minutes when thinking is on without the chat-template
+        # switch. Proofs are repaired by the compile loop, so fast
+        # non-thinking mode wins.
         kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+    elif level != "off":
+        # Explicit thinking level (TACTIC_THINKING): surface it as an
+        # OpenAI-compatible reasoning effort (tau thinking.py → provider).
+        kwargs["reasoning_effort"] = reasoning_effort_for_level(level)
     resp = client().chat.completions.create(**kwargs)
     usage = resp.usage
     content = resp.choices[0].message.content or ""
