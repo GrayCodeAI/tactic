@@ -1,6 +1,6 @@
-name = "tactic"
+name = "lean-prover"
 version = "0.1.0"
-defaultTargets = ["Tactic"]
+defaultTargets = ["Prover"]
 
 [[require]]
 name = "mathlib"
@@ -8,5 +8,5 @@ git = "https://github.com/leanprover-community/mathlib4"
 rev = "v4.20.0"
 
 [[lean_lib]]
-name = "Tactic"
+name = "Prover"
 srcDir = "src"

@@ -10,7 +10,7 @@ from agent.diagnostics import (
     ProofCallDiagnosticLogger,
     new_proof_call_run_id,
 )
-from agent.paths import TacticPaths
+from agent.paths import ProverPaths
 
 
 def _context(tmp_path: Path) -> ProofCallDiagnosticContext:
@@ -52,13 +52,13 @@ def test_log_llm_error_extracts_status_and_attempts(tmp_path: Path) -> None:
 
 
 def test_from_paths_uses_logs_dir(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("TACTIC_LOGS_DIR", str(tmp_path / "custom-logs"))
+    monkeypatch.setenv("PROVER_LOGS_DIR", str(tmp_path / "custom-logs"))
     logger = ProofCallDiagnosticLogger.from_paths()
     assert logger.path == tmp_path / "custom-logs" / "agent-calls.jsonl"
 
 
 def test_from_paths_default_layout(tmp_path: Path) -> None:
-    paths = TacticPaths(home=tmp_path / "home")
+    paths = ProverPaths(home=tmp_path / "home")
     logger = ProofCallDiagnosticLogger.from_paths(paths)
     assert logger.path == tmp_path / "home" / "logs" / "agent-calls.jsonl"
 

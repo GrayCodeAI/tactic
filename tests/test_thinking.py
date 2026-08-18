@@ -53,34 +53,34 @@ def test_next_thinking_level_cycles() -> None:
 
 
 def test_level_from_env_defaults_to_off(monkeypatch) -> None:
-    monkeypatch.delenv("TACTIC_THINKING", raising=False)
-    monkeypatch.setenv("TACTIC_DISABLE_THINKING", "1")
+    monkeypatch.delenv("PROVER_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_DISABLE_THINKING", "1")
     assert thinking.thinking_level_from_env() == "off"
 
 
 def test_disable_thinking_zero_keeps_default(monkeypatch) -> None:
-    monkeypatch.delenv("TACTIC_THINKING", raising=False)
-    monkeypatch.setenv("TACTIC_DISABLE_THINKING", "0")
+    monkeypatch.delenv("PROVER_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_DISABLE_THINKING", "0")
     # No explicit level and no hard-off switch → default level.
     assert thinking.thinking_level_from_env() == thinking.DEFAULT_THINKING_LEVEL
 
 
-def test_explicit_tactic_thinking_wins_over_disable_switch(monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_THINKING", "high")
-    monkeypatch.setenv("TACTIC_DISABLE_THINKING", "1")
+def test_explicit_prover_thinking_wins_over_disable_switch(monkeypatch) -> None:
+    monkeypatch.setenv("PROVER_THINKING", "high")
+    monkeypatch.setenv("PROVER_DISABLE_THINKING", "1")
     assert thinking.thinking_level_from_env() == "high"
 
 
 def test_thinking_enabled_tracks_level(monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_THINKING", "medium")
-    monkeypatch.delenv("TACTIC_DISABLE_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_THINKING", "medium")
+    monkeypatch.delenv("PROVER_DISABLE_THINKING", raising=False)
     assert thinking.thinking_enabled() is True
     assert thinking.thinking_enabled("off") is False
 
 
 def test_set_thinking_level_overrides_env(monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_THINKING", "medium")
-    monkeypatch.delenv("TACTIC_DISABLE_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_THINKING", "medium")
+    monkeypatch.delenv("PROVER_DISABLE_THINKING", raising=False)
     try:
         assert thinking.set_thinking_level("xhigh") == "xhigh"
         assert thinking.thinking_level_from_env() == "xhigh"

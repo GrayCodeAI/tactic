@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble report.json from session JSONL logs (~/.tactic/sessions/).
+"""Assemble report.json from session JSONL logs (~/.prover/sessions/).
 
 Use after a bench run (especially if the process was interrupted before it
 could write the report, e.g. a hung worker): reconstructs per-problem results
@@ -12,7 +12,7 @@ from pathlib import Path
 
 PROBLEMS = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("benchmark/problems.json")
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("report.json")
-SESSIONS = Path.home() / ".tactic" / "sessions"
+SESSIONS = Path.home() / ".prover" / "sessions"
 TIER = {"trivial": 0, "easy": 1, "medium": 2, "hard": 3}
 
 

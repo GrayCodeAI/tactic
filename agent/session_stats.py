@@ -1,5 +1,5 @@
-"""Lifetime activity and usage totals for a recorded tactic session
-(ported from huggingface/tau session_stats.py; tactic's session is a JSONL
+"""Lifetime activity and usage totals for a recorded prover session
+(ported from huggingface/tau session_stats.py; prover's session is a JSONL
 event stream, so we aggregate the llm_request/llm_response/result records
 instead of tau's message entries).
 """

@@ -1,6 +1,6 @@
 """Tests for the TUI trust modal and gating — ported from
 huggingface/tau tests (test_project_trust.py modal tests), adapted to
-tactic's TrustScreen and TACTIC_TRUST env policy."""
+prover's TrustScreen and PROVER_TRUST env policy."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from agent.project_trust import (
     ProjectTrustStore,
     ProtectedResourceSummary,
 )
-from agent.tui import TacticApp, TrustScreen
+from agent.tui import ProverApp, TrustScreen
 
 
 def _fake_request(tmp_path) -> ProjectTrustRequest:
@@ -41,7 +41,7 @@ async def _wait_for_modal(pilot) -> TrustScreen:
 
 def test_trust_modal_lists_all_choices_and_esc_cancels(tmp_path) -> None:
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test() as pilot:
             screen = TrustScreen(_fake_request(tmp_path))
             choice: list[object] = []
@@ -65,7 +65,7 @@ def test_trust_modal_lists_all_choices_and_esc_cancels(tmp_path) -> None:
 
 def test_trust_modal_select_triggers_choice(tmp_path) -> None:
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test() as pilot:
             screen = TrustScreen(_fake_request(tmp_path))
             choice: list[object] = []
@@ -83,11 +83,11 @@ def test_trust_modal_select_triggers_choice(tmp_path) -> None:
 
 
 def test_untrusted_project_blocks_problem_loading(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_TRUST", "never")
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("PROVER_TRUST", "never")
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path))
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
             await pilot.pause(0.1)
             await pilot.pause()
@@ -101,11 +101,11 @@ def test_untrusted_project_blocks_problem_loading(tmp_path, monkeypatch) -> None
 
 def test_ask_mode_persists_approved_trust_and_loads_problems(tmp_path, monkeypatch) -> None:
     store_dir = tmp_path / "cfg"
-    monkeypatch.setenv("TACTIC_TRUST", "ask")
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(store_dir))
+    monkeypatch.setenv("PROVER_TRUST", "ask")
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(store_dir))
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
             trust = await _wait_for_modal(pilot)
             trust.dismiss("trust-exact")
@@ -124,11 +124,11 @@ def test_ask_mode_persists_approved_trust_and_loads_problems(tmp_path, monkeypat
 
 def test_ask_mode_decline_blocks_loading(tmp_path, monkeypatch) -> None:
     store_dir = tmp_path / "cfg"
-    monkeypatch.setenv("TACTIC_TRUST", "ask")
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(store_dir))
+    monkeypatch.setenv("PROVER_TRUST", "ask")
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(store_dir))
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
             trust = await _wait_for_modal(pilot)
             trust.dismiss("decline-run")

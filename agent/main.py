@@ -1,4 +1,4 @@
-"""CLI entry point: `tactic prove ...` / `tactic bench ...`."""
+"""CLI entry point: `prover prove ...` / `prover bench ...`."""
 
 from __future__ import annotations
 
@@ -121,7 +121,7 @@ def cmd_tui(args: argparse.Namespace) -> int:
     try:
         from .tui import main as tui_main
     except ImportError:
-        print("TUI requires the optional 'textual' dependency: pip install 'tactic[tui]'")
+        print("TUI requires the optional 'textual' dependency: pip install 'lean-prover[tui]'")
         return 1
     tui_main(parallel=args.parallel)
     return 0
@@ -135,7 +135,7 @@ def cmd_usage(args: argparse.Namespace) -> int:
     from .session_manager import SessionManager
     from .session_usage import collect_session_usage, render_usage_dashboard
 
-    model = os.environ.get("TACTIC_MODEL") or None
+    model = os.environ.get("PROVER_MODEL") or None
     arg = (args.id or "").strip().lower()
 
     if not arg or arg == "all":
@@ -252,7 +252,7 @@ def cmd_leaderboard(args: argparse.Namespace) -> int:
             t["total"] += 1
             t["proved"] += int(r["proved"])
         entry = {
-            "name": args.name or os.environ.get("TACTIC_MODEL", "unknown"),
+            "name": args.name or os.environ.get("PROVER_MODEL", "unknown"),
             "score": score,
             "total": len(results),
             "tiers": by_tier,
@@ -266,7 +266,7 @@ def cmd_leaderboard(args: argparse.Namespace) -> int:
         return 0
 
     if not board:
-        print("Leaderboard is empty. Run `tactic leaderboard --run` after a benchmark.")
+        print("Leaderboard is empty. Run `prover leaderboard --run` after a benchmark.")
         return 0
     print(f"{'#':>2} {'name':<28} {'score':>5}  tiers")
     for i, e in enumerate(board, 1):
@@ -276,7 +276,7 @@ def cmd_leaderboard(args: argparse.Namespace) -> int:
 
 
 def cli() -> None:
-    ap = argparse.ArgumentParser(prog="tactic", description="Lean 4 proof agent")
+    ap = argparse.ArgumentParser(prog="prover", description="Lean 4 proof agent")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("prove", help="prove a single theorem")
@@ -312,7 +312,7 @@ def cli() -> None:
                    help="number of parallel proof workers (default=1)")
     t.set_defaults(fn=cmd_tui)
 
-    s = sub.add_parser("sessions", help="list/inspect recorded proof sessions (~/.tactic/sessions)")
+    s = sub.add_parser("sessions", help="list/inspect recorded proof sessions (~/.prover/sessions)")
     s.add_argument("id", nargs="?", default=None,
                    help="session id (filename stem) to show in detail")
     s.add_argument("--limit", type=int, default=20, help="max sessions to list")

@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass
 
-from .paths import TacticPaths
+from .paths import ProverPaths
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +72,7 @@ def take_reload_snapshot() -> ReloadSnapshot:
     except OSError:
         snap.themes = 0
     with suppress(Exception):
-        store_dir = TacticPaths().config_dir
+        store_dir = ProverPaths().config_dir
         snap.trust = sum(
             1 for _ in (store_dir.glob("trust*") if store_dir.exists() else [])
         )

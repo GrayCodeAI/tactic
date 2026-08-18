@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import quote
 
-LSP_TIMEOUT = float(os.environ.get("TACTIC_LSP_TIMEOUT", "90"))
+LSP_TIMEOUT = float(os.environ.get("PROVER_LSP_TIMEOUT", "90"))
 
 
 def file_uri(path: Path) -> str:

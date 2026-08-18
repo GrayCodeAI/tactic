@@ -1,4 +1,4 @@
-"""`tactic usage` CLI + proof-loop diagnostic-log wiring tests."""
+"""`prover usage` CLI + proof-loop diagnostic-log wiring tests."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def test_usage_cli_single_session(monkeypatch, tmp_path, capsys) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     _write_usage_session(sessions, "sess-a")
-    monkeypatch.setenv("TACTIC_SESSIONS_DIR", str(sessions))
+    monkeypatch.setenv("PROVER_SESSIONS_DIR", str(sessions))
     rc = main.cmd_usage(_ns(id="sess-a"))
     out = capsys.readouterr().out
     assert rc == 0
@@ -43,7 +43,7 @@ def test_usage_cli_all_sessions(monkeypatch, tmp_path, capsys) -> None:
     sessions.mkdir()
     _write_usage_session(sessions, "sess-a")
     _write_usage_session(sessions, "sess-b")
-    monkeypatch.setenv("TACTIC_SESSIONS_DIR", str(sessions))
+    monkeypatch.setenv("PROVER_SESSIONS_DIR", str(sessions))
     rc = main.cmd_usage(_ns(id=None))
     out = capsys.readouterr().out
     assert rc == 0
@@ -54,7 +54,7 @@ def test_usage_cli_missing_session(monkeypatch, tmp_path, capsys) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     _write_usage_session(sessions, "sess-a")
-    monkeypatch.setenv("TACTIC_SESSIONS_DIR", str(sessions))
+    monkeypatch.setenv("PROVER_SESSIONS_DIR", str(sessions))
     rc = main.cmd_usage(_ns(id="nope"))
     assert rc == 1
     assert "session not found" in capsys.readouterr().out

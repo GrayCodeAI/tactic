@@ -1,5 +1,5 @@
 """Tests for drag-and-drop file insertion in the TUI prompt — ported from
-huggingface/tau tests/test_tui_file_drop.py, adapted to tactic's prompt."""
+huggingface/tau tests/test_tui_file_drop.py, adapted to prover's prompt."""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ class TestNormalizeDroppedPaths:
 
 
 class PromptHarness(App):
-    """Minimal app that mirrors TacticApp's paste interception."""
+    """Minimal app that mirrors ProverApp's paste interception."""
 
     def compose(self) -> ComposeResult:
         yield PromptInput(placeholder="", id="prompt")

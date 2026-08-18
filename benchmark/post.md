@@ -9,17 +9,17 @@ Final: score 68/100 · flips dvd_sub_int, gcd_mul_right · wall ~7h first run
 Built an open-source agent that writes Lean 4 proofs: LLM draft → lake
 compile → feed exact errors back → patch. 68/100 on my graded benchmark
 with a 27B free Qwen endpoint. $0. Hammer pre-pass alone nukes the trivial
-tier. Loop > clever prompting. github.com/GrayCodeAI/tactic
+tier. Loop > clever prompting. github.com/GrayCodeAI/lean-prover
 ```
 
 ## Hacker News (Show HN)
 
-Title: Show HN: Tactic – An agent that writes Lean 4 proofs with a
+Title: Show HN: Prover – An agent that writes Lean 4 proofs with a
 compiler-error repair loop
 
 Body:
 
-Tactic is a proof-writing agent for Lean 4. Give it a theorem statement
+Prover is a proof-writing agent for Lean 4. Give it a theorem statement
 and it loops: the LLM drafts a proof → `lake build` type-checks it → the
 exact compiler diagnostics + open goal state (via Lean LSP
 `getInteractiveGoals`) go back to the model → it patches. Lean's errors
@@ -64,11 +64,11 @@ benchmark with a 27B model
 
 Body (shorter, more technical than HN):
 
-I built tactic, an agent that writes Lean 4 proofs against a pinned
+I built lean-prover, an agent that writes Lean 4 proofs against a pinned
 Mathlib v4.20 project. The loop is: statement locked by us (the model only
 writes the proof body), `lake env lean --check` per step, compiler
 diagnostics with surrounding source context, plus open goal state via the
-Lean LSP's `getInteractiveGoals` RPC. A tactic hammer pre-pass
+Lean LSP's `getInteractiveGoals` RPC. A prover hammer pre-pass
 (ring/omega/linarith/… before any LLM call) solves a surprising number
 outright.
 
@@ -83,4 +83,4 @@ I'd especially like feedback on:
 2. What a minimal public leaderboard would need to be credible
    (statement hashing, sealed evaluation?)
 
-Code + sessions: github.com/GrayCodeAI/tactic
+Code + sessions: github.com/GrayCodeAI/lean-prover

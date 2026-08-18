@@ -1,4 +1,4 @@
-# tactic
+# lean-prover
 
 An agent that writes Lean 4 proofs. You give it a theorem; it iterates
 (LLM draft → `lake` compile → parse diagnostics → fix) until the proof
@@ -10,7 +10,7 @@ Working agent, 100-problem benchmark, interactive TUI, MCP server,
 session resume/branching, history compaction, theming.
 Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 68/100**
 (trivial 20/20, easy 23/30, medium 21/30, hard 4/20), $0 cost (free HF endpoint).
-Public leaderboard: **https://graycodeai.github.io/tactic/**
+Public leaderboard: **https://graycodeai.github.io/lean-prover/**
 
 ## Setup
 
@@ -28,7 +28,7 @@ pip install pytest              # to run the test suite
 # 3. LLM access (any OpenAI-compatible endpoint)
 export OPENAI_API_KEY=...          # or
 export OPENAI_BASE_URL=http://localhost:11434/v1  # e.g. Ollama
-export TACTIC_MODEL=gpt-4o
+export PROVER_MODEL=gpt-4o
 ```
 
 ### Environment variables
@@ -36,28 +36,28 @@ export TACTIC_MODEL=gpt-4o
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | Any OpenAI-compatible provider. |
-| `TACTIC_MODEL` | `gpt-4o` | Model name for `/status` + cost lookup. |
-| `TACTIC_CONTEXT_WINDOW` | per-model table in `llm.py` | Override the context-window size used to compute the auto-compaction budget. |
-| `TACTIC_SESSIONS_DIR` | `~/.tactic/sessions` | Where proof sessions (JSONL) are recorded. |
-| `TACTIC_PROMPTS_DIR` | `~/.tactic/prompts` (or `$TACTIC_CONFIG_DIR/prompts`) | User-level prompt templates (project `<repo>/.tactic/prompts` wins). |
-| `TACTIC_THEMES_DIR` | `~/.tactic/themes` | Custom TUI themes (`*.json`). |
-| `TACTIC_LOGS_DIR` | `~/.tactic/logs` | Diagnostic logs. |
-| `TACTIC_CONFIG_DIR` | `~/.tactic` | Overrides the whole user config home (prompts/themes/logs/trust). |
-| `TACTIC_TRUST` | `always` | Project trust policy: `always` / `never` / `ask`. |
-| `TACTIC_NO_SESSIONS` | `0` | `1` disables session recording. |
-| `TACTIC_BRANCH_SUMMARY` | `1` | `0` disables model-assisted branch summaries. |
-| `TACTIC_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
-| `TACTIC_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `TACTIC_THINKING` wins. |
-| `TACTIC_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
+| `PROVER_MODEL` | `gpt-4o` | Model name for `/status` + cost lookup. |
+| `PROVER_CONTEXT_WINDOW` | per-model table in `llm.py` | Override the context-window size used to compute the auto-compaction budget. |
+| `PROVER_SESSIONS_DIR` | `~/.prover/sessions` | Where proof sessions (JSONL) are recorded. |
+| `PROVER_PROMPTS_DIR` | `~/.prover/prompts` (or `$PROVER_CONFIG_DIR/prompts`) | User-level prompt templates (project `<repo>/.prover/prompts` wins). |
+| `PROVER_THEMES_DIR` | `~/.prover/themes` | Custom TUI themes (`*.json`). |
+| `PROVER_LOGS_DIR` | `~/.prover/logs` | Diagnostic logs. |
+| `PROVER_CONFIG_DIR` | `~/.prover` | Overrides the whole user config home (prompts/themes/logs/trust). |
+| `PROVER_TRUST` | `always` | Project trust policy: `always` / `never` / `ask`. |
+| `PROVER_NO_SESSIONS` | `0` | `1` disables session recording. |
+| `PROVER_BRANCH_SUMMARY` | `1` | `0` disables model-assisted branch summaries. |
+| `PROVER_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
+| `PROVER_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `PROVER_THINKING` wins. |
+| `PROVER_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
 
 ## Usage
 
 ```bash
-# Prove a single theorem interactively (edits lean/src/Tactic.lean)
-tactic prove "theorem pythagoras (a b c : ℕ) : a ^ 2 + b ^ 2 = c ^ 2 ↔ a = 0" --max-steps 20
+# Prove a single theorem interactively (edits lean/src/Prover.lean)
+prover prove "theorem pythagoras (a b c : ℕ) : a ^ 2 + b ^ 2 = c ^ 2 ↔ a = 0" --max-steps 20
 
 # Interactive TUI: browse problems, watch live repairs, slash commands
-tactic tui            # or: tactic tui -p 4 (parallel workers)
+prover tui            # or: prover tui -p 4 (parallel workers)
 
 # Slash commands inside the TUI prompt bar (Tab-less: ctrl+space completes):
 #   /help /prove /run /stop /workers <n> /resume <id> /branch <id> [turn]
@@ -65,34 +65,34 @@ tactic tui            # or: tactic tui -p 4 (parallel workers)
 #   /usage [session-id|all] /reload
 
 # Run the benchmark (100 theorems, JSON in benchmark/problems.json)
-tactic bench --max-steps 20 --report report.json
-tactic bench --parallel 4            # isolation makes parallelism safe
-tactic bench --no-goal-feedback      # errors only, no LSP goal state
-tactic bench --no-record             # skip JSONL session logs
+prover bench --max-steps 20 --report report.json
+prover bench --parallel 4            # isolation makes parallelism safe
+prover bench --no-goal-feedback      # errors only, no LSP goal state
+prover bench --no-record             # skip JSONL session logs
 
 # Inspect recorded proof sessions (event stream per run)
-tactic sessions                      # list recent sessions
-tactic sessions 20260817-015954-proof       # replay one
-tactic sessions 20260817-015954-proof --raw # with raw JSON records
+prover sessions                      # list recent sessions
+prover sessions 20260817-015954-proof       # replay one
+prover sessions 20260817-015954-proof --raw # with raw JSON records
 
 # Token/cost dashboard (per session or across all)
-tactic usage                         # all sessions
-tactic usage 20260817-015954-proof   # one session
+prover usage                         # all sessions
+prover usage 20260817-015954-proof   # one session
 
 # Machine-readable proof output
-tactic prove "..." --output json         # one JSON event per line
-tactic prove "..." --output transcript   # colored step transcript
+prover prove "..." --output json         # one JSON event per line
+prover prove "..." --output transcript   # colored step transcript
 
 # Local leaderboard: run a subset and record the score
-tactic leaderboard --run --problems benchmark/trivial.json --name my-model
-tactic leaderboard --show
-# Public board: https://graycodeai.github.io/tactic/ (deploys via GitHub Pages on push)
+prover leaderboard --run --problems benchmark/trivial.json --name my-model
+prover leaderboard --show
+# Public board: https://graycodeai.github.io/lean-prover/ (deploys via GitHub Pages on push)
 
-# Use tactic from any MCP client (Claude, opencode, Cursor, …)
-tactic mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
+# Use lean-prover from any MCP client (Claude, opencode, Cursor, …)
+prover mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
 
 # Tests
-pytest tests/        # ~279 tests (loop, compaction, session, TUI, commands)
+pytest tests/        # ~292 tests (loop, compaction, session, TUI, commands)
 ```
 
 ## How it works
@@ -129,12 +129,12 @@ summary) rather than truncated, so weak models stop re-trying dead ends.
 
 ```
 lean/               Lean 4 package (lake), Mathlib pinned to v4.20.0
-  src/Tactic.lean   target file the agent edits
+  src/Prover.lean   target file the agent edits
   tmp/              per-problem files (benchmark isolation)
 agent/              the agent (Python)
   loop.py           repair loop + hammer pre-pass + resume/branch
   events.py         event protocol — one stream to trace/session/TUI
-  session.py        JSONL sessions (~/.tactic/sessions/)
+  session.py        JSONL sessions (~/.prover/sessions/)
   session_manager.py index.jsonl upsert/list + history rebuild
   session_stats.py  per-session token + cost aggregation
   compaction.py     failed-attempts summary (tau's memory model)
@@ -147,7 +147,7 @@ agent/              the agent (Python)
   context_window.py token-based context estimation + auto-compaction threshold
   session_usage.py  /usage token + cost dashboard
   thinking.py       reasoning levels → provider kwargs (tau thinking port)
-  diagnostics.py    structured JSONL failure log (~/.tactic/logs/, tau port)
+  diagnostics.py    structured JSONL failure log (~/.prover/logs/, tau port)
   rendering.py      --output text/json/transcript renderers (tau rendering port)
   autocomplete.py   slash-command completions (tau pattern)
   themes.py         TUI themes as JSON data (tau pattern)
@@ -155,8 +155,8 @@ agent/              the agent (Python)
   tui.py            Textual TUI (problems, live trace, replay, commands)
   main.py           CLI (prove / bench / tui / mcp / sessions / usage / leaderboard)
 benchmark/          fixed theorem set + runner + merge_reports.py
-tests/              pytest suite (279 tests)
-leaderboard.json    local score history (tactic leaderboard)
+tests/              pytest suite (292 tests)
+leaderboard.json    local score history (prover leaderboard)
 site/               public leaderboard site (GitHub Pages)
 ```
 
@@ -167,21 +167,21 @@ site/               public leaderboard site (GitHub Pages)
 - [x] Per-problem Lean file isolation (parallel runs)
 - [x] Proof trace logging + cost tracking
 - [x] Goal-state feedback via Lean LSP (`getInteractiveGoals`)
-- [x] MCP server wrapper (`tactic mcp`)
-- [x] Leaderboard (local: `tactic leaderboard`; public site in `site/`)
+- [x] MCP server wrapper (`prover mcp`)
+- [x] Leaderboard (local: `prover leaderboard`; public site in `site/`)
 - [x] TUI: custom prove, session replay, parallel workers, Errors panel
 - [x] Clipboard (tau port: pyperclip + OSC-52 fallback, selection-aware)
 - [x] Slash commands + completions (tau pattern, 21 built-ins) + ctrl+k palette
 - [x] Session resume + branching (`/branch <session> [turn]`, model branch summaries)
 - [x] File drops into the prompt bar (paths quoted/URI-decoded, tau port)
 - [x] Session export (`/export`, JSONL + self-contained HTML transcript)
-- [x] Project trust gating (`.tactic` protected resources, modal + env policy)
+- [x] Project trust gating (`.prover` protected resources, modal + env policy)
 - [x] Prompt templates (`/prompts` picker, slash expansion, project override)
 - [x] History compaction (failed-attempts summary) + token-based auto-compaction
 - [x] Themes + terminal-title chrome + OSC 9/99 completion notification (tau pattern)
 - [x] Queued prompts while running (ctrl+e to edit), /new /compact /name (tau pattern)
 - [x] Session token + cost dashboard (`/usage`, per-session and across all)
 - [x] `/reload` resource change summary (problems/themes/prompts before→after)
-- [x] Thinking levels, structured failure log, `--output` renderers, `tactic usage` CLI (tau port)
+- [x] Thinking levels, structured failure log, `--output` renderers, `prover usage` CLI (tau port)
 - [x] Results post + public leaderboard (see leaderboard.json)
 - [x] Public leaderboard site (`site/`, GitHub Pages — updates on every push to leaderboard.json)

@@ -2,101 +2,101 @@
   {
     "id": "add_comm_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_add_comm_nat (a b : \u2115) : a + b = b + a := by\n  sorry"
+    "statement": "theorem prover_add_comm_nat (a b : \u2115) : a + b = b + a := by\n  sorry"
   },
   {
     "id": "mul_comm_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_mul_comm_nat (a b : \u2115) : a * b = b * a := by\n  sorry"
+    "statement": "theorem prover_mul_comm_nat (a b : \u2115) : a * b = b * a := by\n  sorry"
   },
   {
     "id": "add_assoc_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_add_assoc_nat (a b c : \u2115) : a + b + c = a + (b + c) := by\n  sorry"
+    "statement": "theorem prover_add_assoc_nat (a b c : \u2115) : a + b + c = a + (b + c) := by\n  sorry"
   },
   {
     "id": "mul_assoc_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_mul_assoc_nat (a b c : \u2115) : a * b * c = a * (b * c) := by\n  sorry"
+    "statement": "theorem prover_mul_assoc_nat (a b c : \u2115) : a * b * c = a * (b * c) := by\n  sorry"
   },
   {
     "id": "add_zero_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_add_zero_nat (a : \u2115) : a + 0 = a := by\n  sorry"
+    "statement": "theorem prover_add_zero_nat (a : \u2115) : a + 0 = a := by\n  sorry"
   },
   {
     "id": "mul_one_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_mul_one_nat (a : \u2115) : a * 1 = a := by\n  sorry"
+    "statement": "theorem prover_mul_one_nat (a : \u2115) : a * 1 = a := by\n  sorry"
   },
   {
     "id": "zero_mul_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_zero_mul_nat (a : \u2115) : 0 * a = 0 := by\n  sorry"
+    "statement": "theorem prover_zero_mul_nat (a : \u2115) : 0 * a = 0 := by\n  sorry"
   },
   {
     "id": "nat_sub_self",
     "difficulty": "trivial",
-    "statement": "theorem tactic_nat_sub_self (n : \u2115) : n - n = 0 := by\n  sorry"
+    "statement": "theorem prover_nat_sub_self (n : \u2115) : n - n = 0 := by\n  sorry"
   },
   {
     "id": "succ_injective",
     "difficulty": "trivial",
-    "statement": "theorem tactic_succ_injective (a b : \u2115) : Nat.succ a = Nat.succ b \u2192 a = b := by\n  sorry"
+    "statement": "theorem prover_succ_injective (a b : \u2115) : Nat.succ a = Nat.succ b \u2192 a = b := by\n  sorry"
   },
   {
     "id": "add_right_cancel_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_add_right_cancel_nat (a b c : \u2115) : a + b = a + c \u2192 b = c := by\n  sorry"
+    "statement": "theorem prover_add_right_cancel_nat (a b c : \u2115) : a + b = a + c \u2192 b = c := by\n  sorry"
   },
   {
     "id": "mul_add_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_mul_add_nat (a b c : \u2115) : a * (b + c) = a * b + a * c := by\n  sorry"
+    "statement": "theorem prover_mul_add_nat (a b c : \u2115) : a * (b + c) = a * b + a * c := by\n  sorry"
   },
   {
     "id": "sq_eq_mul",
     "difficulty": "trivial",
-    "statement": "theorem tactic_sq_eq_mul (a : \u2115) : a ^ 2 = a * a := by\n  sorry"
+    "statement": "theorem prover_sq_eq_mul (a : \u2115) : a ^ 2 = a * a := by\n  sorry"
   },
   {
     "id": "two_mul_nat",
     "difficulty": "trivial",
-    "statement": "theorem tactic_two_mul_nat (n : \u2115) : 2 * n = n + n := by\n  sorry"
+    "statement": "theorem prover_two_mul_nat (n : \u2115) : 2 * n = n + n := by\n  sorry"
   },
   {
     "id": "nat_add_sub_cancel",
     "difficulty": "trivial",
-    "statement": "theorem tactic_nat_add_sub_cancel (a b : \u2115) : a \u2264 b \u2192 a + (b - a) = b := by\n  sorry"
+    "statement": "theorem prover_nat_add_sub_cancel (a b : \u2115) : a \u2264 b \u2192 a + (b - a) = b := by\n  sorry"
   },
   {
     "id": "int_add_neg_self",
     "difficulty": "trivial",
-    "statement": "theorem tactic_int_add_neg_self (a : \u2124) : a + -a = 0 := by\n  sorry"
+    "statement": "theorem prover_int_add_neg_self (a : \u2124) : a + -a = 0 := by\n  sorry"
   },
   {
     "id": "int_neg_one_mul",
     "difficulty": "trivial",
-    "statement": "theorem tactic_int_neg_one_mul (a : \u2124) : -1 * a = -a := by\n  sorry"
+    "statement": "theorem prover_int_neg_one_mul (a : \u2124) : -1 * a = -a := by\n  sorry"
   },
   {
     "id": "nat_le_succ",
     "difficulty": "trivial",
-    "statement": "theorem tactic_nat_le_succ (n : \u2115) : n \u2264 n + 1 := by\n  sorry"
+    "statement": "theorem prover_nat_le_succ (n : \u2115) : n \u2264 n + 1 := by\n  sorry"
   },
   {
     "id": "nat_lt_succ",
     "difficulty": "trivial",
-    "statement": "theorem tactic_nat_lt_succ (n : \u2115) : n < n + 1 := by\n  sorry"
+    "statement": "theorem prover_nat_lt_succ (n : \u2115) : n < n + 1 := by\n  sorry"
   },
   {
     "id": "prop_or_self",
     "difficulty": "trivial",
-    "statement": "theorem tactic_prop_or_self (p : Prop) : p \u2228 p \u2194 p := by\n  sorry"
+    "statement": "theorem prover_prop_or_self (p : Prop) : p \u2228 p \u2194 p := by\n  sorry"
   },
   {
     "id": "not_not_self_eq",
     "difficulty": "trivial",
-    "statement": "theorem tactic_not_not_self_eq (a : \u2115) : \u00ac\u00ac(a = a) := by\n  sorry"
+    "statement": "theorem prover_not_not_self_eq (a : \u2115) : \u00ac\u00ac(a = a) := by\n  sorry"
   }
 ]

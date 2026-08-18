@@ -270,13 +270,13 @@ def test_branch_rejects_bad_turn(registry, session) -> None:
 def test_theme_shows_current_and_available(registry, session) -> None:
     result = registry.execute(session, "/theme")
     msg = result.message or ""
-    assert "tactic-dark" in msg
+    assert "prover-dark" in msg
     assert result.theme is None
 
 
 def test_theme_sets_theme(registry, session) -> None:
-    result = registry.execute(session, "/theme tactic-light")
-    assert result.theme == "tactic-light"
+    result = registry.execute(session, "/theme prover-light")
+    assert result.theme == "prover-light"
 
 
 def test_theme_rejects_unknown(registry, session) -> None:
@@ -313,7 +313,7 @@ def test_status_shows_thinking_level(registry, session) -> None:
 
 
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; tactic ships 23 built-in (incl. /thinking)."""
+    """20 was tau's alignment number; prover ships 23 built-in (incl. /thinking)."""
     assert len(registry.list_commands()) == 23
 
 

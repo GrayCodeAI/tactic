@@ -1,8 +1,8 @@
 """Structured diagnostic logging for proof-session failures (tau diagnostics.py port).
 
-Tactic's llm_error events already keep the human-readable stream; this module
-adds tau's machine-readable JSONL failure log under `TacticPaths.logs_dir`
-(`~/.tactic/logs/agent-calls.jsonl`) so hard failures (timeouts, 5xx, malformed
+Prover's llm_error events already keep the human-readable stream; this module
+adds tau's machine-readable JSONL failure log under `ProverPaths.logs_dir`
+(`~/.prover/logs/agent-calls.jsonl`) so hard failures (timeouts, 5xx, malformed
 responses) survive a TUI restart with full tracebacks.
 """
 
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .paths import TacticPaths
+from .paths import ProverPaths
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,9 +37,9 @@ class ProofCallDiagnosticLogger:
         self.path = path
 
     @classmethod
-    def from_paths(cls, paths: TacticPaths | None = None) -> ProofCallDiagnosticLogger:
-        """Create a logger using tactic's default path layout."""
-        return cls((paths or TacticPaths()).logs_dir / "agent-calls.jsonl")
+    def from_paths(cls, paths: ProverPaths | None = None) -> ProofCallDiagnosticLogger:
+        """Create a logger using prover's default path layout."""
+        return cls((paths or ProverPaths()).logs_dir / "agent-calls.jsonl")
 
     def log_exception(
         self,

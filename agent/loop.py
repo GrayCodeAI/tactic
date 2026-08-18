@@ -90,9 +90,9 @@ def _get_lean_file(problem_id: str | None = None) -> Path:
     if problem_id:
         tmp_dir = LEAN_DIR / "tmp"
         tmp_dir.mkdir(exist_ok=True)
-        return tmp_dir / f"Tactic_{problem_id}.lean"
+        return tmp_dir / f"Prover_{problem_id}.lean"
     # Fallback to original single file (for `prove` command)
-    return LEAN_DIR / "src" / "Tactic.lean"
+    return LEAN_DIR / "src" / "Prover.lean"
 
 
 def _split_signature(statement: str) -> str:

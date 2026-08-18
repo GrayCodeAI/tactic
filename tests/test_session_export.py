@@ -1,5 +1,5 @@
 """Tests for session export (JSONL + HTML transcript) — ported from
-huggingface/tau tests/test_session_export.py, adapted to tactic's flat
+huggingface/tau tests/test_session_export.py, adapted to prover's flat
 event-record sessions."""
 
 from __future__ import annotations

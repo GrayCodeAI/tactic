@@ -1,6 +1,6 @@
 """Best-effort terminal attention notifications for completed runs
 (ported from huggingface/tau tui/terminal_notification.py, minus the
-TurnNotificationMode config — tactic uses a simple auto/bell/off env flag).
+TurnNotificationMode config — prover uses a simple auto/bell/off env flag).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Literal, TextIO, cast
 from .terminal_title import sanitize_terminal_title
 
 OSC_TERMINATOR = "\a"
-TURN_FINISHED_MESSAGE = "tactic run finished"
+TURN_FINISHED_MESSAGE = "prover run finished"
 DesktopNotificationProtocol = Literal["osc9", "osc99"]
 
 
@@ -23,7 +23,7 @@ def terminal_notification_supported(
     environ: Mapping[str, str] | None = None,
     stream: TextIO | None = None,
 ) -> bool:
-    """Return whether tactic may write attention sequences to this terminal."""
+    """Return whether prover may write attention sequences to this terminal."""
     env = os.environ if environ is None else environ
     target = sys.__stdout__ if stream is None else stream
     if not getattr(target, "isatty", lambda: False)():

@@ -1,10 +1,10 @@
 """MCP (Model Context Protocol) server — expose `prove` to any MCP agent.
 
 Zero-dependency implementation of the MCP stdio transport: newline-delimited
-JSON-RPC 2.0 (MCP protocol version 2025-03-26). Run via `tactic mcp` and
+JSON-RPC 2.0 (MCP protocol version 2025-03-26). Run via `prover mcp` and
 point any MCP client (Claude, opencode, Cursor, ...) at it:
 
-    {"command": "tactic", "args": ["mcp"]}
+    {"command": "prover", "args": ["mcp"]}
 
 Tools:
 - prove_theorem {statement, max_steps?, goal_feedback?} → proof result
@@ -20,7 +20,7 @@ import sys
 
 from .loop import Result
 
-SERVER_INFO = {"name": "tactic", "version": "0.1.0"}
+SERVER_INFO = {"name": "lean-prover", "version": "0.2.0"}
 PROTOCOL_VERSION = "2025-03-26"
 
 TOOLS = [

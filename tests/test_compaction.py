@@ -15,7 +15,7 @@ from agent.compaction import (
 )
 
 
-def _turn(body: str, error: str = "Tactic.lean:3:2: error: unsolved goals") -> list[dict]:
+def _turn(body: str, error: str = "Prover.lean:3:2: error: unsolved goals") -> list[dict]:
     user = {
         "role": "user",
         "content": (
@@ -116,4 +116,4 @@ def test_attempt_summaries_pairs_users_and_assistants() -> None:
     msgs = _history(3)
     pairs = _attempt_summaries(msgs)
     assert len(pairs) == 3
-    assert all(err.startswith("Tactic.lean") for _, err in pairs)
+    assert all(err.startswith("Prover.lean") for _, err in pairs)

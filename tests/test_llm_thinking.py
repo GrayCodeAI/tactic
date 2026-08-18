@@ -54,8 +54,8 @@ def fake_client(monkeypatch):
 
 
 def test_thinking_off_with_base_url_sends_disable_switch(monkeypatch, fake_client) -> None:
-    monkeypatch.delenv("TACTIC_THINKING", raising=False)
-    monkeypatch.setenv("TACTIC_DISABLE_THINKING", "1")
+    monkeypatch.delenv("PROVER_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_DISABLE_THINKING", "1")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:1/v1")
     llm._call("sys", [], 0.2)
     kwargs = fake_client.chat.completions.kwargs
@@ -64,8 +64,8 @@ def test_thinking_off_with_base_url_sends_disable_switch(monkeypatch, fake_clien
 
 
 def test_thinking_off_without_base_url_sends_nothing(monkeypatch, fake_client) -> None:
-    monkeypatch.delenv("TACTIC_THINKING", raising=False)
-    monkeypatch.setenv("TACTIC_DISABLE_THINKING", "1")
+    monkeypatch.delenv("PROVER_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_DISABLE_THINKING", "1")
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     llm._call("sys", [], 0.2)
     kwargs = fake_client.chat.completions.kwargs
@@ -74,8 +74,8 @@ def test_thinking_off_without_base_url_sends_nothing(monkeypatch, fake_client) -
 
 
 def test_explicit_thinking_level_sends_reasoning_effort(monkeypatch, fake_client) -> None:
-    monkeypatch.setenv("TACTIC_THINKING", "high")
-    monkeypatch.delenv("TACTIC_DISABLE_THINKING", raising=False)
+    monkeypatch.setenv("PROVER_THINKING", "high")
+    monkeypatch.delenv("PROVER_DISABLE_THINKING", raising=False)
     monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:1/v1")
     llm._call("sys", [], 0.2)
     kwargs = fake_client.chat.completions.kwargs

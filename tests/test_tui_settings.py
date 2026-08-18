@@ -15,14 +15,14 @@ from agent.tui import (
 
 
 def test_settings_path_follows_config_dir(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
     assert tui_settings_path() == tmp_path / "config" / "tui.json"
 
 
 def test_save_then_load_round_trips(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
     settings = TuiSettings(
-        auto_copy_selection=True, theme="tactic-light",
+        auto_copy_selection=True, theme="prover-light",
         notification="bell", thinking_level="high",
     )
     save_tui_settings(settings)
@@ -30,12 +30,12 @@ def test_save_then_load_round_trips(monkeypatch, tmp_path) -> None:
 
 
 def test_load_returns_defaults_when_missing(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path / "absent"))
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "absent"))
     assert load_tui_settings() == TuiSettings()
 
 
 def test_load_survives_invalid_json(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
     path = tui_settings_path()
     path.parent.mkdir(parents=True)
     path.write_text("{not json", encoding="utf-8")
@@ -43,11 +43,11 @@ def test_load_survives_invalid_json(monkeypatch, tmp_path) -> None:
 
 
 def test_load_clamps_invalid_values(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
     path = tui_settings_path()
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({
-        "auto_copy_selection": True, "theme": "tactic-dark",
+        "auto_copy_selection": True, "theme": "prover-dark",
         "notification": "weird", "thinking_level": "bogus",
     }), encoding="utf-8")
     loaded = load_tui_settings()
@@ -57,7 +57,7 @@ def test_load_clamps_invalid_values(monkeypatch, tmp_path) -> None:
 
 
 def test_from_json_ignores_unknown_keys(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
     path = tui_settings_path()
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"theme": "high-contrast", "future_key": 1}),

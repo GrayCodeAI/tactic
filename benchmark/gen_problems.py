@@ -17,9 +17,9 @@ P = []  # (id, difficulty, statement)
 
 
 def add(pid: str, diff: str, stmt: str) -> None:
-    # Prefix every theorem name with `tactic_` so it can never collide
+    # Prefix every theorem name with `prover_` so it can never collide
     # with a Mathlib declaration (collision = "already declared" error).
-    P.append((pid, diff, stmt.replace("theorem ", "theorem tactic_", 1) + SORRY))
+    P.append((pid, diff, stmt.replace("theorem ", "theorem prover_", 1) + SORRY))
 
 
 # ---------------- trivial (20) ----------------

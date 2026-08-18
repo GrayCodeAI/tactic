@@ -1,5 +1,5 @@
 """Tests for the /prompts picker and template expansion in the prompt bar —
-ported from huggingface/tau prompt-template wiring, adapted to tactic."""
+ported from huggingface/tau prompt-template wiring, adapted to prover."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from textual.widgets import OptionList
 
 from agent.commands import CommandResult, create_default_command_registry
 from agent.prompt_templates import PromptTemplate
-from agent.tui import PromptsScreen, TacticApp
+from agent.tui import PromptsScreen, ProverApp
 
 
 def test_prompts_command_result_flag() -> None:
@@ -21,13 +21,13 @@ def test_prompts_command_result_flag() -> None:
 
 
 def test_template_expansion_beats_unknown_command(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_PROMPTS_DIR", str(tmp_path))
+    monkeypatch.setenv("PROVER_PROMPTS_DIR", str(tmp_path))
     (tmp_path / "brief.md").write_text("Prove {{ arguments }} tersely.")
 
     expanded_text: list[str] = []
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
             app._queued_prompts = []
             app._run_active = True
@@ -44,10 +44,10 @@ def test_template_expansion_beats_unknown_command(tmp_path: Path, monkeypatch) -
 
 
 def test_unknown_command_without_template_notifies(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_PROMPTS_DIR", str(tmp_path / "empty"))
+    monkeypatch.setenv("PROVER_PROMPTS_DIR", str(tmp_path / "empty"))
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
             app.query_one("#prompt").value = "/nonexistent hi"
             app.query_one("#prompt").action_submit()
@@ -64,7 +64,7 @@ def test_prompts_screen_lists_templates_and_dismisses_with_choice(tmp_path: Path
     ]
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test() as pilot:
             result: list[object] = []
 
@@ -92,10 +92,10 @@ def test_prompts_screen_lists_templates_and_dismisses_with_choice(tmp_path: Path
 
 
 def test_prompts_command_empty_namespace_notifies(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_PROMPTS_DIR", str(tmp_path / "empty"))
+    monkeypatch.setenv("PROVER_PROMPTS_DIR", str(tmp_path / "empty"))
 
     async def scenario() -> None:
-        app = TacticApp()
+        app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
             result = CommandResult(handled=True, prompts_requested=True)
             app._apply_command(result)
@@ -119,12 +119,12 @@ def test_reload_command_flag() -> None:
 
 
 def test_reload_reloads_problems_from_disk(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("TACTIC_TRUST", "always")
+    monkeypatch.setenv("PROVER_TRUST", "always")
     problems_file = Path(__file__).resolve().parent.parent / "benchmark" / "problems.json"
     original = problems_file.read_text()
     try:
         async def scenario() -> None:
-            app = TacticApp()
+            app = ProverApp()
             async with app.run_test(size=(140, 40)) as pilot:
                 for _ in range(50):
                     if app._trust_resolution is not None:

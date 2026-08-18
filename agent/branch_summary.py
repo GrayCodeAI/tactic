@@ -1,7 +1,7 @@
 """Model-assisted summaries for abandoned proof branches.
 
-Tau port (tau_coding/branch_summary.py) flattened to tactic's event-record
-sessions: tau summarizes an agent conversation branch; tactic summarizes the
+Tau port (tau_coding/branch_summary.py) flattened to prover's event-record
+sessions: tau summarizes an agent conversation branch; prover summarizes the
 recorded turns of a proof run that ended in failure, so a `/branch` re-run
 from an earlier point knows what the old run already tried.  File-operation
 section of tau's adapter maps to the problem/session identity instead (the
@@ -151,7 +151,7 @@ def _add_branch_summary_context(
     summary: str, *, problem_id: str, statement: str
 ) -> str:
     """Attach bounded context about the branch's subject (tau parity:
-    tau lists read/modified files; tactic lists the theorem instead)."""
+    tau lists read/modified files; prover lists the theorem instead)."""
     sections = [BRANCH_SUMMARY_PREAMBLE + summary]
     sections.append(f"<problem>\n{problem_id}\n</problem>")
     sections.append(f"<statement>\n{statement[:4_000]}\n</statement>")

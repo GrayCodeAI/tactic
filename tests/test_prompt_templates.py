@@ -1,6 +1,6 @@
 """Tests for markdown prompt templates — ported from
 huggingface/tau tests/test_prompt_templates.py, with tau's multi-namespace
-resource paths flattened to tactic's prompts-dirs list."""
+resource paths flattened to prover's prompts-dirs list."""
 
 from __future__ import annotations
 

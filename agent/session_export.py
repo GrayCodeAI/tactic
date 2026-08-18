@@ -1,7 +1,7 @@
 """Session export: JSONL passthrough and a self-contained HTML transcript.
 
-Tau port (tau_agent's session_export) flattened to tactic's event stream:
-tactic sessions are flat JSONL event records (agent/events.py), so the
+Tau port (tau_agent's session_export) flattened to prover's event stream:
+prover sessions are flat JSONL event records (agent/events.py), so the
 branch-tree/compaction rendering has no counterpart here.  The HTML export
 renders each record through agent/events.format() — the same human-readable
 lines the CLI prints — with per-event coloring.
@@ -52,7 +52,7 @@ def export_session(
     output_path: Path,
     *,
     format: str | None = None,
-    title: str = "Tactic Session Export",
+    title: str = "Prover Session Export",
     source: str | None = None,
 ) -> Path:
     """Write a session export in the requested or inferred format.
@@ -80,7 +80,7 @@ def _session_jsonl_text(entries: Sequence[dict]) -> str:
 def render_session_html(
     entries: Sequence[dict],
     *,
-    title: str = "Tactic Session Export",
+    title: str = "Prover Session Export",
     source: str | None = None,
 ) -> str:
     """Render a self-contained HTML transcript of a session's event records."""

@@ -22,7 +22,7 @@ RUNNING_TITLE_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 
 def terminal_title_supported() -> bool:
     """Respect no-title env / dumb terminal / non-tty (tau parity)."""
-    flag = os.environ.get("TACTIC_TERMINAL_TITLE", "")
+    flag = os.environ.get("PROVER_TERMINAL_TITLE", "")
     if flag.lower() in ("0", "false", "no", "off"):
         return False
     if flag == "1":

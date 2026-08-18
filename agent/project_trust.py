@@ -1,15 +1,15 @@
 """Project-input trust policy, detection, persistence, and coordination.
 
-Tau port (tau_coding/project_trust.py) trimmed to tactic's protected inputs:
+Tau port (tau_coding/project_trust.py) trimmed to prover's protected inputs:
 the problems/leaderboard files the TUI auto-loads on startup plus prompt
-templates and settings/themes under the .tactic config dir.  Project trust is
+templates and settings/themes under the .prover config dir.  Project trust is
 deliberately an input-loading guard, not a filesystem or process sandbox —
-it decides whether tactic may read a project's ambient resources before the
+it decides whether prover may read a project's ambient resources before the
 loop asks nothing of them.
 
 Skipped from tau (documented): extension deciders, skills, system-prompt
-loading (no tactic loader exists), the macOS case-preserving path dance
-(tactic targets Linux), and the destination-adoption/reload machinery of
+loading (no prover loader exists), the macOS case-preserving path dance
+(prover targets Linux), and the destination-adoption/reload machinery of
 tau's session restore (no counterpart here).
 """
 
@@ -125,9 +125,9 @@ class ProtectedResourceDetector:
         found: dict[str, list[Path]] = {category: [] for category in _RESOURCE_CATEGORIES}
         self._file(found, "problems", root / "benchmark" / "problems.json")
         self._file(found, "leaderboard", root / "leaderboard.json")
-        self._glob(found, "prompts", root / ".tactic" / "prompts", "*.md")
-        self._glob(found, "settings", root / ".tactic" / "settings", "*.json")
-        self._glob(found, "themes", root / ".tactic" / "themes", "*.json")
+        self._glob(found, "prompts", root / ".prover" / "prompts", "*.md")
+        self._glob(found, "settings", root / ".prover" / "settings", "*.json")
+        self._glob(found, "themes", root / ".prover" / "themes", "*.json")
         counts = {
             category: len(found[category]) for category in _RESOURCE_CATEGORIES if found[category]
         }
@@ -168,9 +168,9 @@ class ProjectTrustStore:
     """Versioned, locked, atomically replaced trust decision store."""
 
     def __init__(self, config_dir: Path | None = None) -> None:
-        from .paths import TacticPaths
+        from .paths import ProverPaths
 
-        base = TacticPaths()
+        base = ProverPaths()
         self.home = config_dir or base.config_dir
         self.path = self.home / "trust.json"
         self.lock_path = self.home / "trust.json.lock"

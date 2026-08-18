@@ -1,4 +1,4 @@
-"""Slash command registry for tactic (ported from huggingface/tau commands.py).
+"""Slash command registry for prover (ported from huggingface/tau commands.py).
 
 Same architecture as tau: a `CommandRegistry` of `SlashCommand` records whose
 handlers are *pure parsers* — they inspect a `CommandContext` and return a
@@ -488,7 +488,7 @@ def _system_command(context: CommandContext) -> CommandResult:
 def _theme_command(context: CommandContext) -> CommandResult:
     from .themes import available_tui_theme_names, get_tui_theme
 
-    current = getattr(context.session, "theme", None) or "tactic-dark"
+    current = getattr(context.session, "theme", None) or "prover-dark"
     if not context.args:
         names = ", ".join(available_tui_theme_names())
         return CommandResult(handled=True,

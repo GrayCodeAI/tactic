@@ -1,5 +1,5 @@
 """Tests for project-input trust — ported from
-huggingface/tau tests/test_project_trust.py, trimmed to tactic's protected
+huggingface/tau tests/test_project_trust.py, trimmed to prover's protected
 resources (problems/leaderboard/prompts/settings/themes)."""
 
 from __future__ import annotations
@@ -46,10 +46,10 @@ def test_detector_covers_protected_matrix_without_reading_contents(tmp_path: Pat
     (tmp_path / "benchmark").mkdir()
     (tmp_path / "benchmark" / "problems.json").write_text("not valid json {}")
     (tmp_path / "leaderboard.json").write_text("x")
-    (tmp_path / ".tactic" / "prompts").mkdir(parents=True)
-    (tmp_path / ".tactic" / "prompts" / "t1.md").write_text("x")
-    (tmp_path / ".tactic" / "settings").mkdir()
-    (tmp_path / ".tactic" / "settings" / "s.json").write_text("x")
+    (tmp_path / ".prover" / "prompts").mkdir(parents=True)
+    (tmp_path / ".prover" / "prompts" / "t1.md").write_text("x")
+    (tmp_path / ".prover" / "settings").mkdir()
+    (tmp_path / ".prover" / "settings" / "s.json").write_text("x")
 
     summary = ProtectedResourceDetector().detect(
         canonicalize_project_path(tmp_path)
@@ -66,8 +66,8 @@ def test_detector_covers_protected_matrix_without_reading_contents(tmp_path: Pat
 
 
 def test_detector_ignores_empty_and_unsupported_resources(tmp_path: Path) -> None:
-    (tmp_path / ".tactic").mkdir()
-    (tmp_path / ".tactic" / "prompts").mkdir()
+    (tmp_path / ".prover").mkdir()
+    (tmp_path / ".prover" / "prompts").mkdir()
     summary = ProtectedResourceDetector().detect(canonicalize_project_path(tmp_path))
     assert summary.categories == ()
     assert summary.total == 0

@@ -9,7 +9,7 @@
 - disables native selection while the agent is running so a mutating
   transcript does not move the selection out from under the user.
 
-Tactic equivalents: ProveScreen/main panels ~ transcript messages,
+Prover equivalents: ProveScreen/main panels ~ transcript messages,
 ReplayScreen ~ tau's session modal (its content is always the copy
 target), LeaderboardScreen ~ tau's non-session command modal.
 """
@@ -28,9 +28,9 @@ from textual.selection import SELECT_ALL, Selection
 
 from agent.tui import (
     LeaderboardScreen,
+    ProverApp,
     ReplayScreen,
     SelectableRichLog,
-    TacticApp,
     TuiSettings,
 )
 
@@ -55,7 +55,7 @@ def _write_session(path: Path, problem_id: str = "sq_nonneg") -> Path:
 async def test_tui_selectable_rich_log_extracts_plain_text_selection(tmp_path) -> None:
     """SelectableRichLog exposes the plain-text of every write to Selection
     extraction (tau's TranscriptMessageWidget.get_selection behavior)."""
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(120, 30)) as pilot:
         log = app.query_one("#log", SelectableRichLog)
         log.clear()
@@ -78,7 +78,7 @@ async def test_tui_selectable_rich_log_extracts_plain_text_selection(tmp_path) -
 async def test_tui_auto_copies_selected_text_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = TacticApp(tui_settings=TuiSettings(auto_copy_selection=True))
+    app = ProverApp(tui_settings=TuiSettings(auto_copy_selection=True))
     copied: list[str] = []
     monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
 
@@ -99,7 +99,7 @@ async def test_tui_auto_copies_selected_text_when_enabled(
 async def test_tui_auto_copy_selection_can_be_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = TacticApp(tui_settings=TuiSettings(auto_copy_selection=False))
+    app = ProverApp(tui_settings=TuiSettings(auto_copy_selection=False))
     copied: list[str] = []
     monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
 
@@ -123,7 +123,7 @@ async def test_replay_screen_auto_copies_selected_text(
     """tau: the session modal always copies selections, even when the global
     auto_copy_selection setting is off."""
     session_path = _write_session(tmp_path / "20260101-000000-sq_nonneg.jsonl")
-    app = TacticApp(tui_settings=TuiSettings(auto_copy_selection=False))
+    app = ProverApp(tui_settings=TuiSettings(auto_copy_selection=False))
     copied: list[str] = []
     monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
 
@@ -148,7 +148,7 @@ async def test_non_session_modal_uses_global_auto_copy_setting(
 ) -> None:
     """tau: command modals that are not the session modal follow the global
     setting — here the leaderboard modal copies nothing when it is off."""
-    app = TacticApp(tui_settings=TuiSettings(auto_copy_selection=False))
+    app = ProverApp(tui_settings=TuiSettings(auto_copy_selection=False))
     copied: list[str] = []
     monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
 
@@ -167,7 +167,7 @@ async def test_non_session_modal_uses_global_auto_copy_setting(
 
 @pytest.mark.anyio
 async def test_tui_app_disables_text_selection_while_agent_is_running() -> None:
-    app = TacticApp()
+    app = ProverApp()
 
     async with app.run_test(size=(120, 30)):
         assert app.ALLOW_SELECT is True
@@ -198,7 +198,7 @@ async def test_copy_to_clipboard_prefers_pyperclip(
         App, "copy_to_clipboard", lambda self, text: textual_copied.append(text)
     )
 
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(120, 30)):
         app.copy_to_clipboard("hello")
 
@@ -217,7 +217,7 @@ async def test_copy_to_clipboard_falls_back_without_pyperclip(
         App, "copy_to_clipboard", lambda self, text: textual_copied.append(text)
     )
 
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(120, 30)):
         app.copy_to_clipboard("fallback text")
 

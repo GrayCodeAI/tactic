@@ -1,8 +1,8 @@
 """Output-mode renderers for the proof loop (tau rendering package port).
 
 Tau splits print output into three renderers — final text, JSON event stream,
-and a streaming transcript.  Tactic flattens the package into one module and
-adapts tau's typed `CodingSessionEvent`s to tactic's dict event records
+and a streaming transcript.  Prover flattens the package into one module and
+adapts tau's typed `CodingSessionEvent`s to prover's dict event records
 (agent/events.py):
 
 - `text`       — FinalTextRenderer: print only the final proof body (or error)

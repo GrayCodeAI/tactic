@@ -1,13 +1,13 @@
-"""Thinking-mode primitives for tactic proof sessions (tau thinking.py port).
+"""Thinking-mode primitives for prover proof sessions (tau thinking.py port).
 
-Tau's levels are mapped onto tactic's single OpenAI-compatible endpoint:
+Tau's levels are mapped onto prover's single OpenAI-compatible endpoint:
 - "off"            → vLLM/HF chat-template switch `enable_thinking: False`
-                    (what TACTIC_DISABLE_THINKING=1 already does)
+                    (what PROVER_DISABLE_THINKING=1 already does)
 - minimal..xhigh   → OpenAI-compatible `reasoning_effort` value, same label.
 
-`TACTIC_THINKING` (or the TUI /thinking command) sets the level;
-TACTIC_DISABLE_THINKING=1 keeps its meaning as a hard "off" switch and wins
-over TACTIC_THINKING when the two disagree.
+`PROVER_THINKING` (or the TUI /thinking command) sets the level;
+PROVER_DISABLE_THINKING=1 keeps its meaning as a hard "off" switch and wins
+over PROVER_THINKING when the two disagree.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ THINKING_LEVELS: tuple[ThinkingLevel, ...] = (
     "xhigh",
 )
 # Proofs run fastest with thinking off (the compile loop is the repair
-# signal), so tactic defaults to "off" where tau defaults to "medium".
+# signal), so prover defaults to "off" where tau defaults to "medium".
 DEFAULT_THINKING_LEVEL: ThinkingLevel = "off"
 
 THINKING_LEVEL_DESCRIPTIONS: dict[ThinkingLevel, str] = {
@@ -143,17 +143,17 @@ def clear_thinking_level() -> None:
 def thinking_level_from_env() -> ThinkingLevel:
     """Resolve the active thinking level from the override/environment.
 
-    Precedence: process override (TUI) > TACTIC_THINKING >
-    TACTIC_DISABLE_THINKING=1 (the legacy hard switch, on by default) >
+    Precedence: process override (TUI) > PROVER_THINKING >
+    PROVER_DISABLE_THINKING=1 (the legacy hard switch, on by default) >
     default. Explicit intent wins over the blanket default.
     """
     if _active_level is not None:
         return _active_level
-    explicit = os.environ.get("TACTIC_THINKING")
+    explicit = os.environ.get("PROVER_THINKING")
     normalized = normalize_thinking_level(explicit) if explicit else None
     if normalized is not None and normalized != "off":
         return normalized
-    if normalized is None and os.environ.get("TACTIC_DISABLE_THINKING", "1") == "1":
+    if normalized is None and os.environ.get("PROVER_DISABLE_THINKING", "1") == "1":
         return "off"
     return normalized or DEFAULT_THINKING_LEVEL
 

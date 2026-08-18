@@ -1,7 +1,7 @@
 """TUI themes (ported from huggingface/tau tui/themes — themes are data, not code).
 
 Built-in themes ship as parsed JSON records; custom themes can be dropped
-in ~/.tactic/themes/*.json with the same shape. A theme is registered with
+in ~/.prover/themes/*.json with the same shape. A theme is registered with
 Textual as a real Theme plus a CSS-variable map, so every screen that uses
 $theme variables picks the palette up automatically.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class TuiTheme:
-    """Color palette for the tactic TUI (subset of tau's TuiTheme)."""
+    """Color palette for the prover TUI (subset of tau's TuiTheme)."""
 
     name: str
     dark: bool
@@ -35,8 +35,8 @@ class TuiTheme:
     warn: str
 
 
-_TACTIC_DARK_JSON = """{
-  "name": "tactic-dark",
+_PROVER_DARK_JSON = """{
+  "name": "prover-dark",
   "dark": true,
   "colors": {
     "screen_background": "#12141c",
@@ -56,8 +56,8 @@ _TACTIC_DARK_JSON = """{
   }
 }"""
 
-_TACTIC_LIGHT_JSON = """{
-  "name": "tactic-light",
+_PROVER_LIGHT_JSON = """{
+  "name": "prover-light",
   "dark": false,
   "colors": {
     "screen_background": "#fdfdfd",
@@ -121,24 +121,24 @@ def _parse_theme(record: dict) -> TuiTheme:
 def _load_builtin_themes() -> None:
     if BUILTIN_TUI_THEMES:
         return
-    for raw in (_TACTIC_DARK_JSON, _TACTIC_LIGHT_JSON, _HIGH_CONTRAST_JSON):
+    for raw in (_PROVER_DARK_JSON, _PROVER_LIGHT_JSON, _HIGH_CONTRAST_JSON):
         theme = _parse_theme(json.loads(raw))
         BUILTIN_TUI_THEMES[theme.name] = theme
 
 
 _load_builtin_themes()
 
-TAU_DARK_THEME = BUILTIN_TUI_THEMES["tactic-dark"]  # default, tau naming parity
+TAU_DARK_THEME = BUILTIN_TUI_THEMES["prover-dark"]  # default, tau naming parity
 
 
 def themes_dir() -> Path:
-    from .paths import TacticPaths
+    from .paths import ProverPaths
 
-    return TacticPaths().themes_dir
+    return ProverPaths().themes_dir
 
 
 def load_custom_themes() -> None:
-    """Load user themes from ~/.tactic/themes/*.json (tau parity)."""
+    """Load user themes from ~/.prover/themes/*.json (tau parity)."""
     _custom_themes.clear()
     d = themes_dir()
     if not d.exists():
@@ -170,14 +170,14 @@ def get_tui_theme(name: str) -> TuiTheme:
 def theme_css_variables(theme: TuiTheme) -> dict[str, str]:
     """CSS variables exposed to the app's CSS (tau's theme_css_variables)."""
     return {
-        "tactic-screen-background": theme.screen_background,
-        "tactic-chrome-background": theme.chrome_background,
-        "tactic-sidebar-background": theme.sidebar_background,
-        "tactic-border": theme.border,
-        "tactic-muted": theme.muted_text,
-        "tactic-accent": theme.accent,
-        "tactic-warn": theme.warn,
-        "tactic-prompt-border": theme.prompt_border,
+        "prover-screen-background": theme.screen_background,
+        "prover-chrome-background": theme.chrome_background,
+        "prover-sidebar-background": theme.sidebar_background,
+        "prover-border": theme.border,
+        "prover-muted": theme.muted_text,
+        "prover-accent": theme.accent,
+        "prover-warn": theme.warn,
+        "prover-prompt-border": theme.prompt_border,
     }
 
 

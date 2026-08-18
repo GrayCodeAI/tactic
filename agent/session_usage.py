@@ -1,7 +1,7 @@
-"""Per-request token usage and a compact ASCII dashboard for tactic sessions
+"""Per-request token usage and a compact ASCII dashboard for prover sessions
 (ports tau's session_usage analytics surface to the provider-free record stream).
 
-Tactic records are the JSONL event log: `llm_request`, `llm_response`,
+Prover records are the JSONL event log: `llm_request`, `llm_response`,
 `compaction`, `result`. We collect one `RequestUsage` per assistant response,
 notable `UsageEvent`s (compactions), and tool-call counts, then render a small
 inline dashboard.  Costing reuses llm.estimate_cost.

@@ -1,4 +1,4 @@
-/* Render the tactic leaderboard from the repo's leaderboard.json.
+/* Render the prover leaderboard from the repo's leaderboard.json.
  * Zero dependencies — a small fetch + table build. */
 "use strict";
 
@@ -97,7 +97,7 @@ async function main() {
     const board = await loadBoard();
     loading.hidden = true;
     if (!board.length) {
-      errorBox.textContent = "The leaderboard is empty — run `tactic leaderboard --run` and submit a PR.";
+      errorBox.textContent = "The leaderboard is empty — run `prover leaderboard --run` and submit a PR.";
       errorBox.hidden = false;
       return;
     }

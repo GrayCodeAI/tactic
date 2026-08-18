@@ -1,11 +1,11 @@
-"""Durable proof sessions — JSONL log per run under ~/.tactic/sessions/.
+"""Durable proof sessions — JSONL log per run under ~/.prover/sessions/.
 
 A session records the full event stream of one `prove()` call plus the final
 Result summary. Sessions let you inspect, resume-ish, and diff proof attempts
 after the process exits.
 
-Override the dir with TACTIC_SESSIONS_DIR (handy for tests and CI).
-Set TACTIC_NO_SESSIONS=1 to disable recording entirely.
+Override the dir with PROVER_SESSIONS_DIR (handy for tests and CI).
+Set PROVER_NO_SESSIONS=1 to disable recording entirely.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ from pathlib import Path
 
 
 def _default_dir() -> Path:
-    from .paths import TacticPaths
+    from .paths import ProverPaths
 
-    return TacticPaths().sessions_dir
+    return ProverPaths().sessions_dir
 
 
 def sessions_dir() -> Path:
@@ -48,7 +48,7 @@ class Session:
 
     def open(self) -> bool:
         """Prepare the session file. Returns False if recording is off."""
-        if os.environ.get("TACTIC_NO_SESSIONS") == "1":
+        if os.environ.get("PROVER_NO_SESSIONS") == "1":
             return False
         d = sessions_dir()
         d.mkdir(parents=True, exist_ok=True)

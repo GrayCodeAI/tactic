@@ -11,11 +11,11 @@ def anyio_backend():
 @pytest.fixture(autouse=True)
 def _reset_allow_select():
     """ALLOW_SELECT is set on the class; reset around each test."""
-    from agent.tui import TacticApp
+    from agent.tui import ProverApp
 
-    TacticApp.ALLOW_SELECT = True
+    ProverApp.ALLOW_SELECT = True
     yield
-    TacticApp.ALLOW_SELECT = True
+    ProverApp.ALLOW_SELECT = True
     # The TUI's _apply_thinking_level sets a process-level override in
     # agent.thinking; never let it leak between tests.
     from agent import thinking

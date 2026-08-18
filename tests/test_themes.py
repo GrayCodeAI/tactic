@@ -8,7 +8,7 @@ import pytest
 
 from agent import terminal_title as tt
 from agent import themes
-from agent.tui import TacticApp, TuiSettings
+from agent.tui import ProverApp, TuiSettings
 
 
 def _theme_json(name: str, **color_overrides: str) -> dict:
@@ -27,11 +27,11 @@ def _theme_json(name: str, **color_overrides: str) -> dict:
 
 def test_builtin_themes_present() -> None:
     names = themes.available_tui_theme_names()
-    assert "tactic-dark" in names
-    assert "tactic-light" in names
+    assert "prover-dark" in names
+    assert "prover-light" in names
     assert "high-contrast" in names
-    assert themes.get_tui_theme("tactic-dark").dark is True
-    assert themes.get_tui_theme("tactic-light").dark is False
+    assert themes.get_tui_theme("prover-dark").dark is True
+    assert themes.get_tui_theme("prover-light").dark is False
 
 
 def test_high_contrast_bright_accent() -> None:
@@ -64,15 +64,15 @@ def test_parse_theme_rejects_bad_colors_type() -> None:
 
 
 def test_css_variables_map_all_roles() -> None:
-    theme = themes.get_tui_theme("tactic-dark")
+    theme = themes.get_tui_theme("prover-dark")
     css = themes.theme_css_variables(theme)
-    assert css["tactic-accent"] == theme.accent
-    assert css["tactic-screen-background"] == theme.screen_background
-    assert css["tactic-prompt-border"] == theme.prompt_border
+    assert css["prover-accent"] == theme.accent
+    assert css["prover-screen-background"] == theme.screen_background
+    assert css["prover-prompt-border"] == theme.prompt_border
 
 
 def test_textual_theme_variables_use_accent_as_primary() -> None:
-    theme = themes.get_tui_theme("tactic-dark")
+    theme = themes.get_tui_theme("prover-dark")
     css = themes.textual_theme_variables(theme)
     assert css["primary"] == theme.accent
     assert css["background"] == theme.screen_background
@@ -80,20 +80,20 @@ def test_textual_theme_variables_use_accent_as_primary() -> None:
 
 @pytest.mark.anyio
 async def test_tui_applies_theme_and_registers_themes() -> None:
-    app = TacticApp(tui_settings=TuiSettings(theme="tactic-light"))
+    app = ProverApp(tui_settings=TuiSettings(theme="prover-light"))
     async with app.run_test(size=(120, 30)) as pilot:
         await pilot.pause()
-        assert app.theme == "tactic-light" or app.theme in themes.available_tui_theme_names()
-        assert app.resolved_theme.name == "tactic-light"
+        assert app.theme == "prover-light" or app.theme in themes.available_tui_theme_names()
+        assert app.resolved_theme.name == "prover-light"
         assert app.dark is False
 
 
 @pytest.mark.anyio
 async def test_tui_falls_back_to_dark_on_unknown_theme() -> None:
-    app = TacticApp(tui_settings=TuiSettings(theme="nope"))
+    app = ProverApp(tui_settings=TuiSettings(theme="nope"))
     async with app.run_test(size=(120, 30)) as pilot:
         await pilot.pause()
-        assert app.resolved_theme.name == "tactic-dark"
+        assert app.resolved_theme.name == "prover-dark"
 
 
 # ---------------------------------------------------------------- terminal title

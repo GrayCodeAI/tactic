@@ -19,7 +19,7 @@ from agent import llm, loop
 from agent.session_manager import SessionManager, SessionRecord
 
 SEED_SESSION_ID = "20260101-000000-seed"
-STATEMENT = "theorem tactic_seed (n : ℕ) : n + 0 = n := by\n  sorry"
+STATEMENT = "theorem prover_seed (n : ℕ) : n + 0 = n := by\n  sorry"
 
 
 def _seed_session(sessions_dir: Path) -> None:
@@ -63,7 +63,7 @@ def fake_llm(monkeypatch):
 
 @pytest.fixture
 def sessions(tmp_path, monkeypatch):
-    monkeypatch.setenv("TACTIC_SESSIONS_DIR", str(tmp_path / "sessions"))
+    monkeypatch.setenv("PROVER_SESSIONS_DIR", str(tmp_path / "sessions"))
     _seed_session(tmp_path / "sessions")
     return tmp_path / "sessions"
 

@@ -20,15 +20,15 @@ def failing_llm(monkeypatch):
 
 
 def test_llm_error_writes_diagnostic_log(failing_llm, monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("TACTIC_LOGS_DIR", str(tmp_path / "logs"))
-    monkeypatch.setenv("TACTIC_SESSIONS_DIR", str(tmp_path / "sessions"))
+    monkeypatch.setenv("PROVER_LOGS_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("PROVER_SESSIONS_DIR", str(tmp_path / "sessions"))
     # Skip the real Lean build so the test doesn't need a toolchain.
     monkeypatch.setattr(loop.lean, "check_file", lambda *a, **k: (False, "fake.lean:1:0: error"))
     monkeypatch.setattr(loop.lean, "parse_diagnostics", lambda *a, **k: [])
     monkeypatch.setattr(loop.lean, "error_report", lambda *a, **k: "fake report")
 
     r = loop.prove(
-        "theorem tactic_diag (n : ℕ) : n + 0 = n := by\n  sorry",
+        "theorem prover_diag (n : ℕ) : n + 0 = n := by\n  sorry",
         max_steps=1, verbose=False, problem_id="diag-wire",
         goal_feedback=False, skip_hammers=True,
     )

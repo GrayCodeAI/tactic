@@ -1,5 +1,5 @@
 """Tests for model-assisted branch summaries — ported from
-huggingface/tau branch_summary coverage, adapted to tactic's LLM client and
+huggingface/tau branch_summary coverage, adapted to prover's LLM client and
 event-record sessions."""
 
 from __future__ import annotations

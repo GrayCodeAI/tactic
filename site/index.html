@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tactic — Lean 4 proof leaderboard</title>
+<title>lean-prover — Lean 4 proof leaderboard</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>∎</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +13,7 @@
 <body>
 <header>
   <div class="wrap">
-    <a class="brand" href="https://github.com/GrayCodeAI/tactic">TACTIC</a>
+    <a class="brand" href="https://github.com/GrayCodeAI/lean-prover">LEAN-PROVER</a>
     <span class="qed">∎</span>
     <span class="tag">LLM drafts it. THE KERNEL judges it.</span>
   </div>
@@ -26,7 +26,7 @@
       <b>The graded 100-problem benchmark</b> — 20 trivial · 30 easy · 30 medium · 20 hard —
       on Mathlib v4.20.0 with max&nbsp;20 steps. A row only counts once the Lean kernel
       has type-checked the proof. Submit yours via PR to
-      <a href="https://github.com/GrayCodeAI/tactic/blob/main/leaderboard.json">leaderboard.json</a>.
+      <a href="https://github.com/GrayCodeAI/lean-prover/blob/main/leaderboard.json">leaderboard.json</a>.
     </p>
   </section>
 
@@ -38,10 +38,10 @@
   <section class="howto">
     <h2>Submit a score</h2>
     <pre><code># 1. run the benchmark
-tactic bench --max-steps 20 --report report.json
+prover bench --max-steps 20 --report report.json
 
 # 2. record the score
-tactic leaderboard --run --name "your-model"
+prover leaderboard --run --name "your-model"
 
 # 3. PR the updated leaderboard.json</code></pre>
     <p>Or record a subset run and edit <code>leaderboard.json</code> by hand — each entry is
@@ -51,7 +51,7 @@ tactic leaderboard --run --name "your-model"
 
 <footer>
   <div class="wrap">
-    TACTIC · <a href="https://github.com/GrayCodeAI/tactic">GITHUB</a> · PROOFS VERIFIED BY THE LEAN KERNEL
+    LEAN-PROVER · <a href="https://github.com/GrayCodeAI/lean-prover">GITHUB</a> · PROOFS VERIFIED BY THE LEAN KERNEL
   </div>
 </footer>
 

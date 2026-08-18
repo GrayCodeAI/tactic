@@ -15,7 +15,7 @@ _client: OpenAI | None = None
 # received, so slow-streaming reasoning endpoints can hang forever without
 # this. The call runs in a daemon thread so a hung request can never block
 # process exit (ThreadPoolExecutor's atexit join would otherwise do that).
-HARD_TIMEOUT = float(os.environ.get("TACTIC_LLM_TIMEOUT", "180"))
+HARD_TIMEOUT = float(os.environ.get("PROVER_LLM_TIMEOUT", "180"))
 
 
 def client() -> OpenAI:
@@ -31,12 +31,12 @@ def client() -> OpenAI:
 
 
 def model() -> str:
-    return os.environ.get("TACTIC_MODEL", "gpt-4o")
+    return os.environ.get("PROVER_MODEL", "gpt-4o")
 
 
 # Rough context-window estimates per model family. Used by context_window.py to
 # compute the automatic compaction budget (tau parity). Env override
-# TACTIC_CONTEXT_WINDOW short-circuits this lookup.
+# PROVER_CONTEXT_WINDOW short-circuits this lookup.
 _DEFAULT_CONTEXT_WINDOW_TOKENS = {
     "gpt-4o": 128_000,
     "gpt-4-turbo": 128_000,
@@ -49,7 +49,7 @@ DEFAULT_COMPACTION_RESERVE_TOKENS = 16_384
 
 def context_window_tokens(model_name: str | None = None) -> int:
     """Return the best-known context window for the active/default model."""
-    override = os.environ.get("TACTIC_CONTEXT_WINDOW")
+    override = os.environ.get("PROVER_CONTEXT_WINDOW")
     if override and override.isdigit():
         return int(override)
     name = model_name or model()
@@ -78,14 +78,14 @@ def _call(system: str, messages: list[dict], temperature: float) -> LLMResponse:
     }
     level = thinking_level_from_env()
     if level == "off" and os.environ.get("OPENAI_BASE_URL"):
-        # Thinking off (the tactic default, agent/thinking.py): vLLM/HF
+        # Thinking off (the prover default, agent/thinking.py): vLLM/HF
         # endpoints serving Qwen3+ put output in a `reasoning` field and
         # burn minutes when thinking is on without the chat-template
         # switch. Proofs are repaired by the compile loop, so fast
         # non-thinking mode wins.
         kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
     elif level != "off":
-        # Explicit thinking level (TACTIC_THINKING): surface it as an
+        # Explicit thinking level (PROVER_THINKING): surface it as an
         # OpenAI-compatible reasoning effort (tau thinking.py → provider).
         kwargs["reasoning_effort"] = reasoning_effort_for_level(level)
     resp = client().chat.completions.create(**kwargs)

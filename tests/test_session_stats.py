@@ -1,5 +1,5 @@
 """Session stats tests — ported from huggingface/tau tests for session_stats,
-adapted to tactic's JSONL event stream (a result event carries the totals)."""
+adapted to prover's JSONL event stream (a result event carries the totals)."""
 
 from __future__ import annotations
 

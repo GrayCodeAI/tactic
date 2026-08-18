@@ -1,5 +1,5 @@
 """Terminal notification tests — ported from huggingface/tau
-tests/test_terminal_notification.py, adapted to tactic's module."""
+tests/test_terminal_notification.py, adapted to prover's module."""
 
 from __future__ import annotations
 

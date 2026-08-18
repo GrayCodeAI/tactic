@@ -1,7 +1,7 @@
-"""Textual TUI for tactic — browse problems, watch live proof attempts,
+"""Textual TUI for prover — browse problems, watch live proof attempts,
 prove custom theorems, run benchmarks in parallel, replay past sessions.
 
-Run with: `tactic tui [-p/--parallel N]`
+Run with: `prover tui [-p/--parallel N]`
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class TuiSettings:
     """TUI preferences (subset of tau's TuiSettings), persisted to disk."""
 
     auto_copy_selection: bool = False
-    theme: str = "tactic-dark"
+    theme: str = "prover-dark"
     notification: str = "auto"  # "auto" | "bell" | "off"
     thinking_level: str = ""    # "" = resolve from env (agent/thinking.py)
 
@@ -108,10 +108,10 @@ class TuiSettings:
 
 
 def tui_settings_path() -> Path:
-    """Where TUI preferences persist (tau's tui_settings_path, ~/.tactic/tui.json)."""
-    from .paths import TacticPaths
+    """Where TUI preferences persist (tau's tui_settings_path, ~/.prover/tui.json)."""
+    from .paths import ProverPaths
 
-    return TacticPaths().config_dir / "tui.json"
+    return ProverPaths().config_dir / "tui.json"
 
 
 def load_tui_settings() -> TuiSettings:
@@ -262,7 +262,7 @@ def render_event(ev: dict, pid: str, log: RichLog, goals: RichLog,
                  "bold red")
         sid = ev.get("session_id")
         if sid:
-            _put(log, f"{tag}  session: ~/.tactic/sessions/{sid}.jsonl", "dim")
+            _put(log, f"{tag}  session: ~/.prover/sessions/{sid}.jsonl", "dim")
 
 
 class ProblemRow(ListItem):
@@ -303,7 +303,7 @@ class LeaderboardScreen(ModalScreen[None]):
         board_file = REPO / "leaderboard.json"
         board = json.loads(board_file.read_text()) if board_file.exists() else []
         if not board:
-            table.add_row("—", "(empty)", "run `tactic leaderboard --run`", "", "")
+            table.add_row("—", "(empty)", "run `prover leaderboard --run`", "", "")
             return
         for i, e in enumerate(board, 1):
             tiers = " ".join(
@@ -484,7 +484,7 @@ class ReplayScreen(ModalScreen[None]):
 
 
 class SessionsScreen(ModalScreen[Path | None]):
-    """Browse ~/.tactic/sessions and pick one to replay."""
+    """Browse ~/.prover/sessions and pick one to replay."""
 
     CSS = """
     SessionsScreen { align: center middle; }
@@ -636,10 +636,10 @@ class PromptsScreen(ModalScreen[str | None]):
         self.dismiss(event.option.id)
 
 
-class TacticApp(App):
+class ProverApp(App):
     """Interactive proof agent dashboard."""
 
-    TITLE = "tactic — Lean 4 proof agent"
+    TITLE = "lean-prover — Lean 4 proof agent"
     # Mirrors tau: the session modal always allows selecting (its text is the
     # copy target); the main screen follows ALLOW_SELECT which is toggled off
     # while a proof run mutates the transcript.
@@ -683,7 +683,7 @@ class TacticApp(App):
         self._queued_prompts: list[str] = []
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
         self.command_registry = create_default_command_registry()
-        mode = os.environ.get("TACTIC_NOTIFICATION", self.tui_settings.notification)
+        mode = os.environ.get("PROVER_NOTIFICATION", self.tui_settings.notification)
         self._terminal_notification = TerminalNotificationController(mode)
 
     def get_theme_variables(self) -> dict[str, str]:
@@ -696,12 +696,12 @@ class TacticApp(App):
         try:
             return get_tui_theme(self.tui_settings.theme)
         except KeyError:
-            return get_tui_theme("tactic-dark")
+            return get_tui_theme("prover-dark")
 
     def _active_theme(self) -> TuiTheme:
         return self.resolved_theme
 
-    def _register_tactic_themes(self) -> None:
+    def _register_prover_themes(self) -> None:
         """Register every available theme with Textual's theme system."""
         from textual.theme import Theme
 
@@ -723,14 +723,14 @@ class TacticApp(App):
                 dark=palette.dark,
                 variables=css_vars,
             ))
-        dark = self.tui_settings.theme == "tactic-dark" or self.resolved_theme.dark
+        dark = self.tui_settings.theme == "prover-dark" or self.resolved_theme.dark
         self.dark = dark
 
     # ------------------------------------------------------ CommandSession protocol
 
     @property
     def model(self) -> str:
-        return os.environ.get("TACTIC_MODEL", "gpt-4o (default)")
+        return os.environ.get("PROVER_MODEL", "gpt-4o (default)")
 
     @property
     def session_dir(self) -> Path:
@@ -789,12 +789,12 @@ class TacticApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._register_tactic_themes()
+        self._register_prover_themes()
         with suppress(Exception):
             self.theme = self.tui_settings.theme
         self._apply_thinking_level()
         self._sync_terminal_title()
-        mode = os.environ.get("TACTIC_TRUST", "always")
+        mode = os.environ.get("PROVER_TRUST", "always")
         self._trust_summary = None
         self._trust_resolution = None
         self.run_worker(self._mount_trust_flow(mode), name="project-trust")
@@ -810,7 +810,7 @@ class TacticApp(App):
         """Resolve project-input trust off the mount path, then populate the
         problem list only when trusted. Runs as a worker so the modal's
         push_screen_wait can be served by the message pump."""
-        self._register_tactic_themes()
+        self._register_prover_themes()
         with suppress(Exception):
             self.theme = self.tui_settings.theme
         self._trust_summary, self._trust_resolution = (
@@ -819,7 +819,7 @@ class TacticApp(App):
         if not self._trust_resolution or not self._trust_resolution.trusted:
             self.problems = []
             self._log("[red]project inputs untrusted — problems not loaded; "
-                      "set TACTIC_TRUST=always to allow[/red]")
+                      "set PROVER_TRUST=always to allow[/red]")
             self._emit_reload_summary(problems=0)
             return
         self.problems = load_problems()
@@ -831,7 +831,7 @@ class TacticApp(App):
         problems_list.clear()
         for p in self.problems:
             problems_list.append(ProblemRow(p))
-        model = os.environ.get("TACTIC_MODEL", "gpt-4o (default)")
+        model = os.environ.get("PROVER_MODEL", "gpt-4o (default)")
         self._log(f"model: [cyan]{model}[/cyan] — {len(self.problems)} problems loaded")
         self._log("[dim]p prove · c custom · r run rest · w workers · s stop · "
                   "v sessions · l board · q quit[/dim]")
@@ -852,7 +852,7 @@ class TacticApp(App):
     async def _resolve_project_trust(self, mode: str):
         """Resolve project-input trust for the repo (tau parity; the TUI
         defaults to always so headless/tests are unaffected, and
-        TACTIC_TRUST=ask enables the interactive modal)."""
+        PROVER_TRUST=ask enables the interactive modal)."""
         from .project_trust import (
             ProjectTrustCoordinator,
             ProjectTrustStore,
@@ -885,7 +885,7 @@ class TacticApp(App):
     def _trust_user_visible(self) -> bool:
         """Whether an interactive trust prompt can reach the user."""
         try:
-            return bool(os.environ.get("TERM") or os.environ.get("TACTIC_TRUST") == "ask")
+            return bool(os.environ.get("TERM") or os.environ.get("PROVER_TRUST") == "ask")
         except Exception:  # noqa: BLE001
             return False
 
@@ -1159,7 +1159,7 @@ class TacticApp(App):
 
         def worker() -> None:
             summary = None
-            if branch_at is not None and os.environ.get("TACTIC_BRANCH_SUMMARY", "1") != "0":
+            if branch_at is not None and os.environ.get("PROVER_BRANCH_SUMMARY", "1") != "0":
                 from .branch_summary import summarize_branch_with_model
 
                 summary = summarize_branch_with_model(records)
@@ -1240,7 +1240,7 @@ class TacticApp(App):
                     export_session(
                         entries,
                         destination,
-                        title=f"Tactic session {session_id}",
+                        title=f"Prover session {session_id}",
                         source=str(self.session_dir / f"{session_id}.jsonl"),
                     )
                 except OSError as exc:
@@ -1494,7 +1494,7 @@ class TacticApp(App):
         templates = load_prompt_templates()
         if not templates:
             self.notify(
-                "No prompt templates in ~/.tactic/prompts or .tactic/prompts.",
+                "No prompt templates in ~/.prover/prompts or .prover/prompts.",
                 severity="warning",
             )
             return
@@ -1504,7 +1504,7 @@ class TacticApp(App):
         """Re-run discovery: trust, problems, themes (tau's /reload)."""
         from .reload import take_reload_snapshot
 
-        mode = os.environ.get("TACTIC_TRUST", "always")
+        mode = os.environ.get("PROVER_TRUST", "always")
         self._reload_before = take_reload_snapshot()
         self._reload_before = replace(self._reload_before, problems=len(self.problems))
         self.run_worker(self._mount_trust_flow(mode), name="project-trust-reload")
@@ -1552,7 +1552,7 @@ class TacticApp(App):
 
 
 def main(parallel: int = 1) -> None:
-    TacticApp(parallel=parallel).run()
+    ProverApp(parallel=parallel).run()
 
 
 if __name__ == "__main__":

@@ -112,7 +112,7 @@ def _write_session(path: Path, body_lines: list[str], signature: str) -> Path:
 
 
 def test_history_from_records_round_trips_proof_loop(tmp_path: Path) -> None:
-    signature = "theorem tactic_foo (n : ℕ) : n + 0 = n :="
+    signature = "theorem prover_foo (n : ℕ) : n + 0 = n :="
     sp = _write_session(tmp_path / "foo.jsonl", ["  induction n", "  omega"], signature)
     history = history_from_records(read_session(sp))
 

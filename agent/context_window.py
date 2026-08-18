@@ -1,4 +1,4 @@
-"""Approximate context-size estimation for tactic proof sessions (tau port).
+"""Approximate context-size estimation for prover proof sessions (tau port).
 
 Provider-free, deterministic estimate over the dict-form message history that
 the loop keeps.  The character-based heuristic (~4 chars/token) is good enough

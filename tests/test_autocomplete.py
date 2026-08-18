@@ -2,7 +2,7 @@
 
 Tau completes command names, aliases, and search terms; direct-name matches
 rank above search-term matches, ties broken by display name — we port that
-ordering contract for tactic's slash-command surface.
+ordering contract for prover's slash-command surface.
 """
 
 from __future__ import annotations

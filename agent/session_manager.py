@@ -1,16 +1,16 @@
 """Session manager — durable index + resume/branch primitives
-(ported from huggingface/tau session_manager.py, adapted to tactic's layout).
+(ported from huggingface/tau session_manager.py, adapted to prover's layout).
 
 Tau keeps a per-project `index.jsonl` of session records beside the
-append-only transcripts and replays the root→leaf path on resume. Tactic's
+append-only transcripts and replays the root→leaf path on resume. Prover's
 sessions are flat JSONL event streams, so the port is flattened to match:
 
-- `~/.tactic/sessions/index.jsonl` — one record per session (upsert: rewrite
+- `~/.prover/sessions/index.jsonl` — one record per session (upsert: rewrite
   without same-id line + append, like tau's `_upsert`).
 - resume = seed the repair loop's LLM history from a recorded session and
   continue the loop (tau: reload messages, re-bind harness).
 - branch = same seed but truncated at step k, then a fresh step budget
-  (tau: append a LeafEntry pointing at an earlier entry; tactic has no
+  (tau: append a LeafEntry pointing at an earlier entry; prover has no
   entry tree so the truncated seed is the equivalent pointer).
 """
 

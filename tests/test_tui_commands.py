@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from textual.widgets import Input
 
-from agent.tui import MessageScreen, ProveScreen, SelectableRichLog, TacticApp
+from agent.tui import MessageScreen, ProverApp, ProveScreen, SelectableRichLog
 
 
 async def submit(pilot, text: str) -> None:
@@ -27,7 +27,7 @@ async def submit(pilot, text: str) -> None:
 
 @pytest.mark.anyio
 async def test_status_command_shows_modal() -> None:
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/status")
@@ -39,7 +39,7 @@ async def test_status_command_shows_modal() -> None:
 
 @pytest.mark.anyio
 async def test_workers_command_sets_parallelism() -> None:
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/workers 4")
@@ -48,7 +48,7 @@ async def test_workers_command_sets_parallelism() -> None:
 
 @pytest.mark.anyio
 async def test_help_command_lists_commands() -> None:
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/help")
@@ -63,7 +63,7 @@ async def test_help_command_lists_commands() -> None:
 async def test_clear_command_empties_log() -> None:
     from textual.selection import SELECT_ALL
 
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/clear")
@@ -73,7 +73,7 @@ async def test_clear_command_empties_log() -> None:
 
 @pytest.mark.anyio
 async def test_completions_appear_and_ctrl_space_completes() -> None:
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         prompt = app.query_one("#prompt", Input)
@@ -91,7 +91,7 @@ async def test_completions_appear_and_ctrl_space_completes() -> None:
 
 @pytest.mark.anyio
 async def test_prove_command_opens_editor_modal() -> None:
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/prove")
@@ -102,7 +102,7 @@ async def test_prove_command_opens_editor_modal() -> None:
 
 @pytest.mark.anyio
 async def test_unknown_command_does_not_crash() -> None:
-    app = TacticApp()
+    app = ProverApp()
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/bads")  # unknown command — must not raise

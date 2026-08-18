@@ -1,7 +1,7 @@
 """Markdown prompt template loading and rendering.
 
 Tau port (tau_coding/prompt_templates.py) with tau's resource-path
-machinery flattened to tactic's `~/.tactic/prompts` + `<project>/.tactic/
+machinery flattened to prover's `~/.prover/prompts` + `<project>/.prover/
 prompts` namespaces (the project namespace wins).  Templates are markdown;
 `{{ variable }}` placeholders render from arguments; the `/prompts` picker
 and slash-expansion replicate tau's command behavior.
@@ -58,10 +58,10 @@ class PromptTemplate:
 
 def prompt_templates_dirs() -> list[Path]:
     """Return the prompt template namespaces, project highest precedence."""
-    from .paths import TacticPaths
+    from .paths import ProverPaths
 
-    base = TacticPaths()
-    if os.environ.get("TACTIC_PROMPTS_DIR"):
+    base = ProverPaths()
+    if os.environ.get("PROVER_PROMPTS_DIR"):
         return [base.prompts_dir]
     return [base.prompts_dir, base.project_prompts_dir]
 

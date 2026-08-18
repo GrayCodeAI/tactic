@@ -7,7 +7,7 @@ a self-describing record:
 
 Three consumers, one stream:
 - `trace`   — kept in memory, embedded in Result and report JSON
-- session   — JSONL under ~/.tactic/sessions/ (agent/session.py)
+- session   — JSONL under ~/.prover/sessions/ (agent/session.py)
 - `on_event` — live callback (TUI), see agent/tui.py
 
 The CLI renders records with `format()`; the TUI renders the same records in

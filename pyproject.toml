@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tactic"
+name = "lean-prover"
 version = "0.1.0"
 description = "Agent that writes and iterates Lean 4 proofs"
 requires-python = ">=3.10"
@@ -13,7 +13,7 @@ dependencies = ["openai>=1.30"]
 tui = ["textual>=0.80"]
 
 [project.scripts]
-tactic = "agent.main:cli"
+prover = "agent.main:cli"
 
 [tool.setuptools.packages.find]
 include = ["agent*"]

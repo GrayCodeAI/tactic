@@ -1,8 +1,8 @@
-# Tactic ← Tau Porting Plan
+# Prover ← Tau Porting Plan
 
 Full port plan for the remaining huggingface/tau (HEAD `aec16bb`) surface.
 Completed ports are checked off; every port follows the same gate:
-`ruff check agent/ tests/` → full `pytest tests/` (currently 279) → commit + push.
+`ruff check agent/ tests/` → full `pytest tests/` (currently 292) → commit + push.
 
 Reference clone: `/tmp/opencode/tau` (git pull before each item).
 
@@ -14,20 +14,20 @@ Reference clone: `/tmp/opencode/tau` (git pull before each item).
 
 **Goal**: single source of truth for all user/project dirs; kill scattered env reads.
 
-Port `TauPaths` as `TacticPaths` (frozen dataclass, `home` default `~/.tactic`,
+Port `TauPaths` as `ProverPaths` (frozen dataclass, `home` default `~/.prover`,
 `agents_home` `~/.agents`):
 - `sessions_dir`, `config_dir`, `prompts_dir` (user-level), `themes_dir`, `logs_dir`
-- Env override contract (existing vars win, else default, else `TACTIC_CONFIG_DIR`):
-  `TACTIC_SESSIONS_DIR`, `TACTIC_PROMPTS_DIR`, `TACTIC_CONFIG_DIR` (already honored
-  by project_trust) + new `TACTIC_THEMES_DIR`, `TACTIC_LOGS_DIR`
-- Repo-root discovery: `<CWD>/.tactic/prompts`, `<CWD>/.tactic/themes`
+- Env override contract (existing vars win, else default, else `PROVER_CONFIG_DIR`):
+  `PROVER_SESSIONS_DIR`, `PROVER_PROMPTS_DIR`, `PROVER_CONFIG_DIR` (already honored
+  by project_trust) + new `PROVER_THEMES_DIR`, `PROVER_LOGS_DIR`
+- Repo-root discovery: `<CWD>/.prover/prompts`, `<CWD>/.prover/themes`
   (project dirs win over user dirs — current prompt_templates behavior stays)
 
 **Files**: new `agent/paths.py`; refactor `session_manager.py`, `prompt_templates.py`,
 `themes.py`, `project_trust.py`, `tui.py`, `main.py` to consume it (no behavior change).
 
 **Tests**: `tests/test_paths.py` — env overrides, project-over-user precedence,
-`TACTIC_CONFIG_DIR` fallback.
+`PROVER_CONFIG_DIR` fallback.
 
 **Acceptance**: no `Path.home()`/`getenv` dir plumbing outside `paths.py`; full suite green.
 
@@ -40,11 +40,11 @@ tau parity), used by compaction + branch summaries.
 
 Port:
 - `estimate_text_tokens(text)`, `estimate_message_tokens(message)` (adapted from
-  tau's `AgentMessage` to tactic's dict history items)
+  tau's `AgentMessage` to prover's dict history items)
 - `estimate_context_tokens(...)`
 - `auto_compaction_threshold_for_context_window(tokens)` → 70% of `llm.llm`'s
   known context window (constant in `llm.py`; make it env-tunable
-  `TACTIC_CONTEXT_WINDOW`)
+  `PROVER_CONTEXT_WINDOW`)
 - `summarize_messages_for_compaction` / `build_compaction_summary_prompt` /
   `serialize_messages_for_compaction` (tau's shapes) — adapt into current
   `agent/compaction.py` while keeping its event-record behavior
@@ -68,15 +68,15 @@ session and across all sessions, with an ASCII dashboard.
 
 Port:
 - `RequestUsage`, `UsageEvent`, `SessionUsage` dataclasses
-- `collect_session_usage(entries)` — feed it tactic `SessionEntry`/index rows or
+- `collect_session_usage(entries)` — feed it prover `SessionEntry`/index rows or
   raw records (records already carry `prompt_tokens`/`completion_tokens`/
   `tokens`; `session_stats.py` counters stay as the per-session source)
-- `estimated_request_cost` with tactic's pricing constants (`$0/M` — keep the
+- `estimated_request_cost` with prover's pricing constants (`$0/M` — keep the
   existing cost columns in `session_stats.py` as source of truth)
 - `render_usage_dashboard` (ASCII line chart, color pairs, compact numbers)
 - New command `/usage`: session picker → dashboard for one session OR `/usage all`
   → across sessions; **files**: `agent/commands.py` (registry 21 → 22),
-  `agent/tui.py` (render into a screen), `agent/main.py` (`tactic usage` CLI)
+  `agent/tui.py` (render into a screen), `agent/main.py` (`prover usage` CLI)
 
 **Files**: new `agent/session_usage.py`; `commands.py`, `tui.py`, `main.py`.
 
@@ -84,7 +84,7 @@ Port:
 records, dashboard rendering smoke (headers/rows), `/usage` command registered
 and TUI action wired.
 
-**Acceptance**: `tactic usage` prints per-session tokens/$ and dashboard;
+**Acceptance**: `prover usage` prints per-session tokens/$ and dashboard;
 suite green.
 
 ---
@@ -94,7 +94,7 @@ suite green.
 **Goal**: parity with `CodingReloadSummary` — `/reload` logs before/after counts.
 
 Port: `ReloadCategorySummary` (before/after/changed/delta) + `CodingReloadSummary`
-shape adapted to tactic categories: `problems`, `themes`, `prompt_templates`,
+shape adapted to prover categories: `problems`, `themes`, `prompt_templates`,
 `trust` (state persisted), `system_prompt_rebuilt`.
 
 **Files**: new `agent/reload.py` (or fold into `tui.py`); `_reload_resources()`
@@ -110,7 +110,7 @@ line; suite green.
 
 ## Batch 5 — Integration polish — **DONE**
 
-### 5.1 [x] Usage in session index + `tactic sessions`
+### 5.1 [x] Usage in session index + `prover sessions`
 - Add `cost`/`tokens` columns populated from record aggregates (`collect_session_usage`
   over each session's records) to the sessions index rendering in `main.py`.
 
@@ -120,7 +120,7 @@ line; suite green.
 
 ### 5.3 [x] Doc sweep
 - `PORTING.md` checkoffs; `GUIDE.md`: `/usage` command, `/reload` summary format,
-  `TACTIC_CONTEXT_WINDOW`; `README.md` roadmap + test count; new env vars table.
+  `PROVER_CONTEXT_WINDOW`; `README.md` roadmap + test count; new env vars table.
 
 ---
 
@@ -130,9 +130,9 @@ line; suite green.
 - Thinking levels (`off`..`xhigh`), `normalize_thinking_level(s)`,
   `reasoning_effort_for_level`, `anthropic_thinking_budget_for_level`,
   `next_thinking_level` (cycle).
-- Tactic default is `off` (tau's is `medium`): proofs repair fastest with no
-  thinking; the compile loop is the signal. `TACTIC_THINKING` sets a level,
-  `TACTIC_DISABLE_THINKING=1` stays the hard off-switch, explicit level wins.
+- Prover default is `off` (tau's is `medium`): proofs repair fastest with no
+  thinking; the compile loop is the signal. `PROVER_THINKING` sets a level,
+  `PROVER_DISABLE_THINKING=1` stays the hard off-switch, explicit level wins.
 - Wired into `llm._call`: off → vLLM/HF `enable_thinking: False` switch
   (previous behavior); non-off → OpenAI `reasoning_effort`.
 - Tests: `tests/test_thinking.py`, `tests/test_llm_thinking.py`.
@@ -140,8 +140,8 @@ line; suite green.
 ### 6.2 [x] `agent/diagnostics.py` (tau `diagnostics.py`, 163 lines)
 - `ProofCallDiagnosticContext` / `ProofCallDiagnosticLogger`
   (tau `AgentCallDiagnosticContext` / `AgentCallDiagnosticLogger`),
-  `new_proof_call_run_id`. JSONL under `TacticPaths.logs_dir`
-  (`~/.tactic/logs/agent-calls.jsonl`) — now the first real consumer
+  `new_proof_call_run_id`. JSONL under `ProverPaths.logs_dir`
+  (`~/.prover/logs/agent-calls.jsonl`) — now the first real consumer
   of `logs_dir`.
 - `log_exception` (traceback) + `log_llm_error` (status/attempts extraction).
   Writes are best-effort: diagnostics never break the proof loop.
@@ -152,13 +152,13 @@ line; suite green.
 - `PrintOutputMode` (`text`/`json`/`transcript`), `EventRenderer` protocol,
   `JsonEventRenderer`, `FinalTextRenderer`, `TranscriptRenderer`,
   `create_event_renderer` — adapted from tau's typed event objects to
-  tactic's dict event records (`agent/events.py`).
+  prover's dict event records (`agent/events.py`).
 - Wired into `main.cmd_prove --output {text,json,transcript}` (tau's print
   modes; `text` keeps the classic summary, `--output transcript/json` streams).
 - Tests: `tests/test_rendering.py`.
 
-### 6.4 [x] `tactic usage` CLI (Batch 4.3 acceptance completion)
-- `main.cmd_usage`: `tactic usage [session-id|all]` renders the
+### 6.4 [x] `prover usage` CLI (Batch 4.3 acceptance completion)
+- `main.cmd_usage`: `prover usage [session-id|all]` renders the
   `session_usage` dashboard (single session or aggregate across sessions),
   mirroring the `/usage` TUI command.
 - Tests: `tests/test_main_usage.py`.
@@ -171,15 +171,15 @@ line; suite green.
 |---|---|
 | `tools.py` (1215), `skills.py`, `catalog_loader.py`, `resources.py`, `extensions/` | no Lean file-mutation mapping; tool = Lean server |
 | `oauth_*`, `provider_*`, `credentials.py`, `tau_ai/*` | single OpenAI-compatible endpoint; env-auth |
-| `system_prompt.py` | tactic's loop prompt is benchmark-tuned (68/100) |
+| `system_prompt.py` | prover's loop prompt is benchmark-tuned (68/100) |
 | `updater.py`, `update_check.py`, `self_docs.py`, `version.py` | packaged tool, no self-update pipeline |
 | `image_processing.py`, `shell_config.py` | no images / no shell in proof loop |
 | `cli.py` | already covered by `main.py` |
 | tau `session.py` continuations (#591/#592) | tool-edit-only features |
-| `context.py` (AGENTS.md project-instruction discovery) | tactic's system prompt is fixed by the loop; no instruction-file contract |
-| `tui/config.py` `tui/state.py` `tui/adapter.py` | tactic's `tui.py` is a single-file rewrite on tactic events; tau's state/adapter model typed events with no counterpart |
-| tau `rendering` typer/rich console styling + `CustomMessageMarkup` | tactic print path is plain ANSI via `events.format()`; no extension API |
-| `tui/widgets.py` `tui/app.py` (11.5k lines) | Textual rewrite lives in tactic `tui.py` (proof-specific panels, not chat widgets) |
+| `context.py` (AGENTS.md project-instruction discovery) | prover's system prompt is fixed by the loop; no instruction-file contract |
+| `tui/config.py` `tui/state.py` `tui/adapter.py` | prover's `tui.py` is a single-file rewrite on prover events; tau's state/adapter model typed events with no counterpart |
+| tau `rendering` typer/rich console styling + `CustomMessageMarkup` | prover print path is plain ANSI via `events.format()`; no extension API |
+| `tui/widgets.py` `tui/app.py` (11.5k lines) | Textual rewrite lives in prover `tui.py` (proof-specific panels, not chat widgets) |
 
 ---
 
