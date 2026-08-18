@@ -76,3 +76,24 @@ def test_thinking_enabled_tracks_level(monkeypatch) -> None:
     monkeypatch.delenv("TACTIC_DISABLE_THINKING", raising=False)
     assert thinking.thinking_enabled() is True
     assert thinking.thinking_enabled("off") is False
+
+
+def test_set_thinking_level_overrides_env(monkeypatch) -> None:
+    monkeypatch.setenv("TACTIC_THINKING", "medium")
+    monkeypatch.delenv("TACTIC_DISABLE_THINKING", raising=False)
+    try:
+        assert thinking.set_thinking_level("xhigh") == "xhigh"
+        assert thinking.thinking_level_from_env() == "xhigh"
+    finally:
+        thinking.clear_thinking_level()
+    assert thinking.thinking_level_from_env() == "medium"
+
+
+def test_set_thinking_level_normalizes_and_rejects_invalid() -> None:
+    try:
+        assert thinking.set_thinking_level("  LOW ") == "low"
+        assert thinking.thinking_level_from_env() == "low"
+    finally:
+        thinking.clear_thinking_level()
+    with pytest.raises(ValueError, match="Unknown thinking mode"):
+        thinking.set_thinking_level("bogus")

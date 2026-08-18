@@ -16,3 +16,8 @@ def _reset_allow_select():
     TacticApp.ALLOW_SELECT = True
     yield
     TacticApp.ALLOW_SELECT = True
+    # The TUI's _apply_thinking_level sets a process-level override in
+    # agent.thinking; never let it leak between tests.
+    from agent import thinking
+
+    thinking.clear_thinking_level()

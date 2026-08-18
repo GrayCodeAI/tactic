@@ -70,11 +70,69 @@ MAX_WORKERS = 16
 
 @dataclass(frozen=True)
 class TuiSettings:
-    """TUI preferences (subset of tau's TuiSettings)."""
+    """TUI preferences (subset of tau's TuiSettings), persisted to disk."""
 
     auto_copy_selection: bool = False
     theme: str = "tactic-dark"
     notification: str = "auto"  # "auto" | "bell" | "off"
+    thinking_level: str = ""    # "" = resolve from env (agent/thinking.py)
+
+    def to_json(self) -> dict:
+        return {
+            "auto_copy_selection": self.auto_copy_selection,
+            "theme": self.theme,
+            "notification": self.notification,
+            "thinking_level": self.thinking_level,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> TuiSettings:
+        base = cls()
+        from .thinking import normalize_thinking_level
+
+        thinking = str(data.get("thinking_level") or "")
+        if thinking:
+            try:
+                thinking = normalize_thinking_level(thinking)
+            except ValueError:
+                thinking = ""
+        notif = str(data.get("notification") or base.notification)
+        if notif not in ("auto", "bell", "off"):
+            notif = base.notification
+        return cls(
+            auto_copy_selection=bool(data.get("auto_copy_selection", base.auto_copy_selection)),
+            theme=str(data.get("theme") or base.theme),
+            notification=notif,
+            thinking_level=thinking,
+        )
+
+
+def tui_settings_path() -> Path:
+    """Where TUI preferences persist (tau's tui_settings_path, ~/.tactic/tui.json)."""
+    from .paths import TacticPaths
+
+    return TacticPaths().config_dir / "tui.json"
+
+
+def load_tui_settings() -> TuiSettings:
+    """Load persisted TUI preferences, falling back to defaults."""
+    path = tui_settings_path()
+    if not path.exists():
+        return TuiSettings()
+    try:
+        return TuiSettings.from_json(json.loads(path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError, TypeError):
+        return TuiSettings()
+
+
+def save_tui_settings(settings: TuiSettings) -> None:
+    """Persist TUI preferences as JSON (tau's save_tui_settings)."""
+    path = tui_settings_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(settings.to_json(), indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def load_problems() -> list[dict]:
@@ -616,7 +674,7 @@ class TacticApp(App):
         super().__init__()
         self.problems = load_problems()
         self.n_workers = min(max(parallel, 1), MAX_WORKERS)
-        self.tui_settings = tui_settings or TuiSettings()
+        self.tui_settings = tui_settings or load_tui_settings()
         self._supports_pyperclip: bool | None = None
         self._terminal_title = TerminalTitleController()
         self._stop_flag = False
@@ -704,6 +762,12 @@ class TacticApp(App):
     def max_workers(self) -> int:
         return MAX_WORKERS
 
+    @property
+    def thinking_level(self) -> str:
+        from . import thinking as thinking_mod
+
+        return self.tui_settings.thinking_level or thinking_mod.thinking_level_from_env()
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="main"):
@@ -728,11 +792,19 @@ class TacticApp(App):
         self._register_tactic_themes()
         with suppress(Exception):
             self.theme = self.tui_settings.theme
+        self._apply_thinking_level()
         self._sync_terminal_title()
         mode = os.environ.get("TACTIC_TRUST", "always")
         self._trust_summary = None
         self._trust_resolution = None
         self.run_worker(self._mount_trust_flow(mode), name="project-trust")
+
+    def _apply_thinking_level(self) -> None:
+        """Push the persisted/configured thinking level into agent.thinking."""
+        from . import thinking as thinking_mod
+
+        level = self.tui_settings.thinking_level or thinking_mod.thinking_level_from_env()
+        thinking_mod.set_thinking_level(level)
 
     async def _mount_trust_flow(self, mode: str) -> None:
         """Resolve project-input trust off the mount path, then populate the
@@ -821,7 +893,8 @@ class TacticApp(App):
         done = self.counts["proved"] + self.counts["failed"] + self.counts["stopped"]
         remaining = max(0, len(self.problems) - done)
         state = "RUNNING" if self._run_active else "idle"
-        return (f"{state:<7} workers={self.n_workers} · proved {self.counts['proved']} · "
+        return (f"{state:<7} workers={self.n_workers} · thinking={self.thinking_level} · "
+                f"proved {self.counts['proved']} · "
                 f"failed {self.counts['failed']} · stopped {self.counts['stopped']} · "
                 f"remaining {remaining}")
 
@@ -998,6 +1071,8 @@ class TacticApp(App):
             self._reload_resources()
         if result.theme:
             self._set_theme(result.theme)
+        if result.thinking_level:
+            self._set_thinking(result.thinking_level)
         if result.export_requested and result.export_destination:
             self._export_log(result.export_destination)
         if result.usage_requested:
@@ -1023,14 +1098,25 @@ class TacticApp(App):
         except KeyError:
             self.notify(f"Unknown theme: {name}", severity="error")
             return
-        self.tui_settings = TuiSettings(
-            auto_copy_selection=self.tui_settings.auto_copy_selection,
-            theme=name,
-            notification=self.tui_settings.notification,
-        )
+        self.tui_settings = replace(self.tui_settings, theme=name)
+        save_tui_settings(self.tui_settings)
         with suppress(Exception):
             self.theme = name
         self.dark = get_tui_theme(name).dark
+
+    def _set_thinking(self, level: str) -> None:
+        """Apply a thinking level (tau's /thinking wiring, persisted)."""
+        from . import thinking as thinking_mod
+
+        try:
+            thinking_mod.set_thinking_level(level)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        if self.tui_settings.thinking_level != level:
+            self.tui_settings = replace(self.tui_settings, thinking_level=level)
+            save_tui_settings(self.tui_settings)
+        self._refresh_status()
 
     def _prove_statement(self, statement: str) -> None:
         """Prove an inline theorem from /prove <statement>."""

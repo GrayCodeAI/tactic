@@ -44,6 +44,9 @@ class CommandSession(Protocol):
     @property
     def is_running(self) -> bool: ...
 
+    @property
+    def thinking_level(self) -> str: ...
+
 
 @dataclass(frozen=True, slots=True)
 class CommandResult:
@@ -68,6 +71,7 @@ class CommandResult:
     export_destination: Path | None = None
     usage_requested: bool = False
     theme: str | None = None
+    thinking_level: str | None = None
     new_session_requested: bool = False
     compact_summary: str | None = None
     rename_requested: bool = False
@@ -247,6 +251,11 @@ def create_default_command_registry() -> CommandRegistry:
         name="theme", description="Show or set the TUI theme.",
         usage="/theme [name]", handler=_theme_command,
         search_terms=("colors", "appearance"),
+    ))
+    registry.register(SlashCommand(
+        name="thinking", description="Show or set the model thinking level.",
+        usage="/thinking [off|minimal|low|medium|high|xhigh]", handler=_thinking_command,
+        aliases=("think",), search_terms=("reasoning", "reasoning_effort"),
     ))
     registry.register(SlashCommand(
         name="system", description="Show the proof loop's system prompt.",
@@ -433,6 +442,7 @@ def _status_command(context: CommandContext) -> CommandResult:
     lines = [
         f"model:   {s.model}",
         f"state:   {state} · workers={s.n_workers}",
+        f"thinking {getattr(s, 'thinking_level', None) or 'off'}",
         (f"proved:  {counts.get('proved', 0)} · failed {counts.get('failed', 0)} · "
          f"stopped {counts.get('stopped', 0)}"),
         f"progress {done}/{s.problems_total}",
@@ -443,6 +453,30 @@ def _status_command(context: CommandContext) -> CommandResult:
 
 def _model_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, message=f"Model: {context.session.model}")
+
+
+def _thinking_command(context: CommandContext) -> CommandResult:
+    from .thinking import (
+        THINKING_LEVEL_DESCRIPTIONS,
+        normalize_thinking_level,
+    )
+
+    current = getattr(context.session, "thinking_level", None) or "off"
+    if not context.args:
+        levels = ", ".join(
+            f"{level}" + (" (active)" if level == current else "")
+            for level in THINKING_LEVEL_DESCRIPTIONS
+        )
+        return CommandResult(handled=True,
+                             message=f"Thinking: {current}. Available: {levels}")
+    raw = context.args.strip()
+    try:
+        level = normalize_thinking_level(raw)
+    except ValueError as exc:
+        return CommandResult(handled=True, message=str(exc))
+    return CommandResult(handled=True, thinking_level=level,
+                         message=f"Thinking level set to {level} "
+                                 f"({THINKING_LEVEL_DESCRIPTIONS[level]}).")
 
 
 def _system_command(context: CommandContext) -> CommandResult:

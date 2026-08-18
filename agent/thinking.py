@@ -22,10 +22,12 @@ __all__ = [
     "THINKING_LEVEL_DESCRIPTIONS",
     "ThinkingLevel",
     "anthropic_thinking_budget_for_level",
+    "clear_thinking_level",
     "next_thinking_level",
     "normalize_thinking_level",
     "normalize_thinking_levels",
     "reasoning_effort_for_level",
+    "set_thinking_level",
     "thinking_enabled",
     "thinking_level_from_env",
 ]
@@ -53,6 +55,9 @@ THINKING_LEVEL_DESCRIPTIONS: dict[ThinkingLevel, str] = {
     "high": "Deep reasoning",
     "xhigh": "Maximum reasoning",
 }
+
+# Process-level override set via /thinking in the TUI (None = use the env).
+_active_level: ThinkingLevel | None = None
 
 
 def normalize_thinking_level(value: str | None) -> ThinkingLevel:
@@ -118,13 +123,32 @@ def next_thinking_level(
     return available[(index + 1) % len(available)]
 
 
-def thinking_level_from_env() -> ThinkingLevel:
-    """Resolve the active thinking level from the environment.
+def set_thinking_level(level: str | None) -> ThinkingLevel:
+    """Set the process-level thinking override (TUI /thinking wiring).
 
-    TACTIC_DISABLE_THINKING=1 (the legacy hard switch, on by default) forces
-    "off" unless TACTIC_THINKING names a non-off level explicitly — explicit
-    intent wins over the blanket default.
+    Returns the normalized level; the override wins over the environment
+    until cleared with `clear_thinking_level()`.
     """
+    global _active_level
+    _active_level = normalize_thinking_level(level)
+    return _active_level
+
+
+def clear_thinking_level() -> None:
+    """Drop the process override; env resolution applies again."""
+    global _active_level
+    _active_level = None
+
+
+def thinking_level_from_env() -> ThinkingLevel:
+    """Resolve the active thinking level from the override/environment.
+
+    Precedence: process override (TUI) > TACTIC_THINKING >
+    TACTIC_DISABLE_THINKING=1 (the legacy hard switch, on by default) >
+    default. Explicit intent wins over the blanket default.
+    """
+    if _active_level is not None:
+        return _active_level
     explicit = os.environ.get("TACTIC_THINKING")
     normalized = normalize_thinking_level(explicit) if explicit else None
     if normalized is not None and normalized != "off":

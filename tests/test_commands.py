@@ -55,6 +55,10 @@ class FakeSession:
         return False
 
     @property
+    def thinking_level(self) -> str:
+        return "off"
+
+    @property
     def current_session_id(self) -> str | None:
         return self._sessions[0] if self._sessions else None
 
@@ -281,9 +285,36 @@ def test_theme_rejects_unknown(registry, session) -> None:
     assert "Unknown theme" in (result.message or "")
 
 
+def test_thinking_shows_current_level(registry, session) -> None:
+    result = registry.execute(session, "/thinking")
+    msg = result.message or ""
+    assert "Thinking: off" in msg
+    assert "minimal" in msg and "xhigh" in msg
+
+
+def test_thinking_sets_valid_level(registry, session) -> None:
+    result = registry.execute(session, "/thinking high")
+    assert result.thinking_level == "high"
+    assert "set to high" in (result.message or "")
+
+
+def test_thinking_alias_think(registry, session) -> None:
+    assert registry.execute(session, "/think low").thinking_level == "low"
+
+
+def test_thinking_rejects_unknown_level(registry, session) -> None:
+    result = registry.execute(session, "/thinking turbo")
+    assert result.thinking_level is None
+    assert "Unknown thinking mode" in (result.message or "")
+
+
+def test_status_shows_thinking_level(registry, session) -> None:
+    assert "thinking off" in (registry.execute(session, "/status").message or "")
+
+
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; tactic ships 22 built-ins."""
-    assert len(registry.list_commands()) == 22
+    """20 was tau's alignment number; tactic ships 23 built-in (incl. /thinking)."""
+    assert len(registry.list_commands()) == 23
 
 
 def test_command_result_defaults(registry, session) -> None:
