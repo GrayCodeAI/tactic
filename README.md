@@ -10,7 +10,7 @@ Working agent, 100-problem benchmark, interactive TUI, MCP server,
 session resume/branching, history compaction, theming.
 Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 68/100**
 (trivial 20/20, easy 23/30, medium 21/30, hard 4/20), $0 cost (free HF endpoint).
-Public leaderboard: **https://graycodeai.github.io/lean-prover/**
+Public leaderboard: **https://lean-prover.github.io/lean-prover/**
 
 ## Setup
 
@@ -86,7 +86,7 @@ prover prove "..." --output transcript   # colored step transcript
 # Local leaderboard: run a subset and record the score
 prover leaderboard --run --problems benchmark/trivial.json --name my-model
 prover leaderboard --show
-# Public board: https://graycodeai.github.io/lean-prover/ (deploys via GitHub Pages on push)
+# Public board: https://lean-prover.github.io/lean-prover/ (deploys via GitHub Pages on push)
 
 # Use lean-prover from any MCP client (Claude, opencode, Cursor, …)
 prover mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems

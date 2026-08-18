@@ -9,7 +9,7 @@ Final: score 68/100 · flips dvd_sub_int, gcd_mul_right · wall ~7h first run
 Built an open-source agent that writes Lean 4 proofs: LLM draft → lake
 compile → feed exact errors back → patch. 68/100 on my graded benchmark
 with a 27B free Qwen endpoint. $0. Hammer pre-pass alone nukes the trivial
-tier. Loop > clever prompting. github.com/GrayCodeAI/lean-prover
+tier. Loop > clever prompting. github.com/Lean-Prover/lean-prover
 ```
 
 ## Hacker News (Show HN)
@@ -83,4 +83,4 @@ I'd especially like feedback on:
 2. What a minimal public leaderboard would need to be credible
    (statement hashing, sealed evaluation?)
 
-Code + sessions: github.com/GrayCodeAI/lean-prover
+Code + sessions: github.com/Lean-Prover/lean-prover
