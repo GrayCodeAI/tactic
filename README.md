@@ -153,8 +153,9 @@ agent/              the agent (Python)
   tui.py            Textual TUI (problems, live trace, replay, commands)
   main.py           CLI (prove / bench / tui / mcp / sessions / usage / leaderboard)
 benchmark/          fixed theorem set + runner + merge_reports.py
-tests/              pytest suite (272 tests)
+tests/              pytest suite (279 tests)
 leaderboard.json    local score history (tactic leaderboard)
+site/               public leaderboard site (GitHub Pages)
 ```
 
 ## Roadmap
@@ -165,7 +166,7 @@ leaderboard.json    local score history (tactic leaderboard)
 - [x] Proof trace logging + cost tracking
 - [x] Goal-state feedback via Lean LSP (`getInteractiveGoals`)
 - [x] MCP server wrapper (`tactic mcp`)
-- [x] Leaderboard (local: `tactic leaderboard`; public site TBD)
+- [x] Leaderboard (local: `tactic leaderboard`; public site in `site/`)
 - [x] TUI: custom prove, session replay, parallel workers, Errors panel
 - [x] Clipboard (tau port: pyperclip + OSC-52 fallback, selection-aware)
 - [x] Slash commands + completions (tau pattern, 21 built-ins) + ctrl+k palette
@@ -181,4 +182,4 @@ leaderboard.json    local score history (tactic leaderboard)
 - [x] `/reload` resource change summary (problems/themes/prompts before→after)
 - [x] Thinking levels, structured failure log, `--output` renderers, `tactic usage` CLI (tau port)
 - [x] Results post + public leaderboard (see leaderboard.json)
-- [ ] Public leaderboard site (submissions welcome via PR)
+- [x] Public leaderboard site (`site/`, GitHub Pages — updates on every push to leaderboard.json)

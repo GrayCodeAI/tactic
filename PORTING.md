@@ -2,7 +2,7 @@
 
 Full port plan for the remaining huggingface/tau (HEAD `aec16bb`) surface.
 Completed ports are checked off; every port follows the same gate:
-`ruff check agent/ tests/` → full `pytest tests/` (currently 272) → commit + push.
+`ruff check agent/ tests/` → full `pytest tests/` (currently 279) → commit + push.
 
 Reference clone: `/tmp/opencode/tau` (git pull before each item).
 

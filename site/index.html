@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tactic — Lean 4 proof leaderboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>∎</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="https://github.com/GrayCodeAI/tactic">TACTIC</a>
+    <span class="qed">∎</span>
+    <span class="tag">LLM drafts it. THE KERNEL judges it.</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1><span>PROOF</span> LEADERBOARD</h1>
+    <p class="sub">
+      Graded 100-problem benchmark (20 trivial · 30 easy · 30 medium · 20 hard) ·
+      Mathlib v4.20.0 · max_steps = 20. A row only counts once the Lean kernel
+      has type-checked the proof. Submit yours via PR to
+      <a href="https://github.com/GrayCodeAI/tactic/blob/main/leaderboard.json">leaderboard.json</a>.
+    </p>
+  </section>
+
+  <section id="board">
+    <div class="loading" id="loading">LOADING leaderboard.json …</div>
+    <div class="error" id="error" hidden></div>
+  </section>
+
+  <section class="howto">
+    <h2>Submit a score</h2>
+    <pre><code># 1. run the benchmark
+tactic bench --max-steps 20 --report report.json
+
+# 2. record the score
+tactic leaderboard --run --name "your-model"
+
+# 3. PR the updated leaderboard.json</code></pre>
+    <p>Or record a subset run and edit <code>leaderboard.json</code> by hand — each entry is
+    <code>{name, score, total, tiers, max_steps, date}</code>.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    TACTIC · <a href="https://github.com/GrayCodeAI/tactic">GITHUB</a> · PROOFS VERIFIED BY THE LEAN KERNEL
+  </div>
+</footer>
+
+<script src="leaderboard.js"></script>
+</body>
+</html>

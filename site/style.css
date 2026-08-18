@@ -1,0 +1,203 @@
+/* NEO-BRUTALIST leaderboard — thick borders, hard shadows, loud colors. */
+:root {
+  --bg: #fdf6e3;
+  --paper: #fffdf5;
+  --ink: #111111;
+  --yellow: #ffe600;
+  --pink: #ff6b9d;
+  --cyan: #6fe7ff;
+  --lime: #8aff5e;
+  --orange: #ffb02e;
+  --border: 3px solid var(--ink);
+  --shadow: 8px 8px 0 var(--ink);
+  --shadow-sm: 4px 4px 0 var(--ink);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  background-image: radial-gradient(var(--ink) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: "Archivo Black", "Arial Black", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 900;
+  min-height: 100vh;
+}
+
+::selection { background: var(--yellow); }
+
+a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { background: var(--yellow); text-decoration: none; }
+
+code, pre, .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+}
+
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 1rem; }
+
+/* ---------- header ---------- */
+header { padding: 1.6rem 0 0.8rem; }
+header .wrap { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+
+.brand {
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  background: var(--lime);
+  border: var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0.25rem 0.9rem;
+  text-decoration: none;
+}
+.brand:hover { background: var(--yellow); transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--ink); }
+
+.qed {
+  font-size: 1.5rem;
+  background: var(--ink);
+  color: var(--lime);
+  border: var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0.1rem 0.6rem;
+}
+
+.tag {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--paper);
+  border: var(--border);
+  padding: 0.35rem 0.7rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- hero ---------- */
+.hero { margin: 2.2rem 0; }
+.hero h1 {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.hero h1 span { background: var(--yellow); border: var(--border); box-shadow: var(--shadow-sm); padding: 0 0.2em; }
+.hero .sub {
+  margin-top: 1.2rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  max-width: 62ch;
+  background: var(--paper);
+  border: var(--border);
+  box-shadow: var(--shadow);
+  padding: 1rem 1.2rem;
+}
+
+/* ---------- board ---------- */
+#board {
+  background: var(--paper);
+  border: var(--border);
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+  margin-bottom: 2.5rem;
+  overflow-x: auto;
+}
+
+table { width: 100%; border-collapse: collapse; min-width: 720px; }
+th, td { text-align: left; padding: 0.7rem 0.7rem; }
+thead th {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  background: var(--ink);
+  color: var(--paper);
+  border: 2px solid var(--ink);
+}
+tbody td { border-bottom: 2px solid var(--ink); }
+tbody tr:hover td { background: var(--yellow); }
+
+td.rank { font-size: 1.2rem; }
+td.model { font-size: 0.9rem; }
+tr:first-child td.model::after {
+  content: "★";
+  margin-left: 0.5rem;
+  color: var(--ink);
+}
+
+td.score { white-space: nowrap; }
+.score-badge {
+  display: inline-block;
+  background: var(--lime);
+  border: var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0.15rem 0.55rem;
+  font-size: 1.05rem;
+}
+tr:first-child .score-badge { background: var(--yellow); }
+
+.bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 120px; height: 14px;
+  margin-left: 0.7rem;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  overflow: hidden;
+}
+.bar i { display: block; height: 100%; background: var(--lime); border-right: 2px solid var(--ink); }
+
+/* tier badges — one loud color per difficulty */
+.tier { white-space: nowrap; font-size: 0.78rem; }
+.badge {
+  display: inline-block;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  padding: 0.12rem 0.45rem;
+  margin-right: 0.5rem;
+}
+.badge.trivial { background: var(--lime); }
+.badge.easy    { background: var(--cyan); }
+.badge.medium  { background: var(--orange); }
+.badge.hard    { background: var(--pink); }
+
+td.steps, th.steps { text-align: center; font-size: 0.85rem; }
+td.date, th.date { color: var(--ink); font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+
+.loading { font-weight: 700; padding: 1.5rem 0.5rem; }
+.error { border: var(--border); background: var(--pink); padding: 1rem 1.2rem; box-shadow: var(--shadow-sm); font-weight: 700; }
+
+/* ---------- howto ---------- */
+.howto { margin-top: 0.5rem; margin-bottom: 3rem; }
+.howto h2 {
+  display: inline-block;
+  text-transform: uppercase;
+  font-size: 1.3rem;
+  background: var(--cyan);
+  border: var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0.2rem 0.8rem;
+  margin-bottom: 1.2rem;
+}
+pre {
+  background: var(--ink);
+  color: var(--lime);
+  border: var(--border);
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.3rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  margin-bottom: 1rem;
+}
+.howto p { font-weight: 700; font-size: 0.88rem; max-width: 64ch; }
+.howto code { background: var(--yellow); border: 2px solid var(--ink); padding: 0.05em 0.35em; }
+pre code { background: none; border: none; padding: 0; color: inherit; }
+
+/* ---------- footer ---------- */
+footer { border-top: 4px solid var(--ink); background: var(--yellow); padding: 1rem 0; }
+footer .wrap { font-weight: 700; font-size: 0.8rem; }
+
+@media (max-width: 640px) {
+  th.date, td.date { display: none; }
+  .bar { display: none; }
+}
