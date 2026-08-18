@@ -243,7 +243,7 @@ attempts so it doesn't repeat the same dead ends.
 - [x] Slash commands (`/help` `/prove` `/branch <id> [turn]` …, tau pattern)
 - [x] Session resume + branching (index.jsonl, prove --resume from, branch_at)
 - [x] History compaction (failed-attempts summary, tau memory model)
-- [ ] Public leaderboard + first results post
+- [x] Public leaderboard (https://graycodeai.github.io/tactic/, GitHub Pages from site/)
 
 
 ---

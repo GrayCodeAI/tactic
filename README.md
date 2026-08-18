@@ -10,6 +10,7 @@ Working agent, 100-problem benchmark, interactive TUI, MCP server,
 session resume/branching, history compaction, theming.
 Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 68/100**
 (trivial 20/20, easy 23/30, medium 21/30, hard 4/20), $0 cost (free HF endpoint).
+Public leaderboard: **https://graycodeai.github.io/tactic/**
 
 ## Setup
 
@@ -85,12 +86,13 @@ tactic prove "..." --output transcript   # colored step transcript
 # Local leaderboard: run a subset and record the score
 tactic leaderboard --run --problems benchmark/trivial.json --name my-model
 tactic leaderboard --show
+# Public board: https://graycodeai.github.io/tactic/ (deploys via GitHub Pages on push)
 
 # Use tactic from any MCP client (Claude, opencode, Cursor, …)
 tactic mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
 
 # Tests
-pytest tests/        # ~272 tests (loop, compaction, session, TUI, commands)
+pytest tests/        # ~279 tests (loop, compaction, session, TUI, commands)
 ```
 
 ## How it works
