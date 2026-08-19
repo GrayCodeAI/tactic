@@ -34,6 +34,40 @@ def model() -> str:
     return os.environ.get("PROVER_MODEL", "gpt-4o")
 
 
+def available_models(timeout: float = 15.0) -> list[str]:
+    """Model names the configured endpoint actually serves (subject to its
+    own request/timeout behavior). Empty when the endpoint is unreachable or
+    the models route itself times out."""
+    base = os.environ.get("OPENAI_BASE_URL")
+    if not base:
+        return []
+    try:
+        raw = client().models.list(timeout=timeout)
+    except Exception:  # noqa: BLE001 — best-effort
+        return []
+    return [m.id for m in getattr(raw, "data", [])]
+
+
+def validate_model(model_name: str | None = None) -> str | None:
+    """Return a hint string when the configured model is not served by the
+    endpoint, or None when it is (or when no custom endpoint is configured).
+
+    Turns a 180s hang into an immediate, actionable message (the endpoint's
+    /models route is fast even when completions are stalled).
+    """
+    base = os.environ.get("OPENAI_BASE_URL")
+    if not base:
+        return None
+    name = model_name or model()
+    served = available_models()
+    if not served:
+        return f"endpoint {base} does not list any models (completions may still be stalling)"
+    if name in served:
+        return None
+    return (f"model '{name}' is not served by {base}; available models: "
+            + (", ".join(sorted(served)) or "none"))
+
+
 # Rough context-window estimates per model family. Used by context_window.py to
 # compute the automatic compaction budget (tau parity). Env override
 # PROVER_CONTEXT_WINDOW short-circuits this lookup.
@@ -42,6 +76,7 @@ _DEFAULT_CONTEXT_WINDOW_TOKENS = {
     "gpt-4-turbo": 128_000,
     "gpt-4": 8_192,
     "gpt-3.5-turbo": 16_384,
+    "qwen": 262_144,
 }
 DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000
 DEFAULT_COMPACTION_RESERVE_TOKENS = 16_384
@@ -52,7 +87,7 @@ def context_window_tokens(model_name: str | None = None) -> int:
     override = os.environ.get("PROVER_CONTEXT_WINDOW")
     if override and override.isdigit():
         return int(override)
-    name = model_name or model()
+    name = (model_name or model()).lower()
     for prefix, window in _DEFAULT_CONTEXT_WINDOW_TOKENS.items():
         if name == prefix or name.startswith(prefix):
             return window

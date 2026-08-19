@@ -14,9 +14,23 @@ sys.stdout.reconfigure(line_buffering=True)
 from .loop import prove, prove_best_of
 
 
+def _warn_model_mismatch() -> None:
+    """Fast endpoint sanity check: warn when PROVER_MODEL isn't served, so a
+    mistyped model name fails in seconds rather than hanging on completions."""
+    import sys
+
+    from . import llm
+
+    hint = llm.validate_model()
+    if hint:
+        print(f"[model warn] {hint}", file=sys.stderr)
+        print("set PROVER_MODEL to one of the served models.", file=sys.stderr)
+
+
 def cmd_prove(args: argparse.Namespace) -> int:
     from .rendering import create_event_renderer
 
+    _warn_model_mismatch()
     mode = args.output
     if mode in ("json", "transcript"):
         # Stream output through a renderer instead of the default text summary.
@@ -82,6 +96,7 @@ def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: boo
 def cmd_bench(args: argparse.Namespace) -> int:
     from pathlib import Path
 
+    _warn_model_mismatch()
     problems = json.loads(Path(args.problems).read_text())
     start = args.start - 1  # 1-indexed for humans
     problems = problems[start:]
