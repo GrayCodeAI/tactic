@@ -123,6 +123,40 @@ prover bench --problems benchmark/trivial.json --report report-trivial.json
 `report.json` contains per-problem `{id, proved, steps, seconds}` plus the
 score. That score is your leaderboard entry.
 
+### Standard benchmarks (MiniF2F)
+
+MiniF2F statements are imported + type-checked once, then bench runs on them
+like any other problems file:
+
+```bash
+# Import the Lean4 MiniF2F port (needs the checkout) and verify all statements
+# compile against the pinned Mathlib (244/244 pass on v4.20.0, 2026-08-19).
+python benchmark/import_standard.py minif2f --src /path/to/miniF2F-lean4 \
+    --split test --verify            # writes benchmark/minif2f_test.json
+prover bench --problems benchmark/minif2f_test.json
+```
+
+The importer never silently drops problems: non-compiling statements are kept
+and flagged `"compiles": false` with their first diagnostics.
+
+### Search & assistance layers (all opt-in)
+
+- `prover prove "..." --n-attempts 3` / `prover bench --n-attempts N` —
+  best-of-N: independent trajectories at a temperature ramp; first proof wins.
+- `PROVER_RETRIEVE=1` — inject top-5 local Mathlib lemma signatures into the
+  prompt (keyword index built once over the pinned mathlib checkout).
+- `PROVER_LEMMA_PLAN=1` — propose ≤3 helper lemmas, prove them first, prepend
+  only proven ones above the main theorem.
+- `PROVER_MODEL_TRIVIAL/EASY/MEDIUM/HARD` (+ `PROVER_TEMP_*`, `PROVER_STEPS_*`)
+  — per-difficulty model/temperature/step routing; fall back to `PROVER_MODEL`.
+- `prover formalize "<NL statement>"` — autoformalize to a compilable Lean
+  theorem (retries on diagnostics).
+- `prover synth-data --count 20 --out synth.jsonl` — synthetic corpus; the
+  `_train` file contains only proven (statement, proof) pairs.
+
+All of these default **off** and are best-effort: a failure never breaks the
+core loop.
+
 ---
 
 ## 5. How the loop works (and why it works)
@@ -210,7 +244,8 @@ attempts so it doesn't repeat the same dead ends.
 - `PROVER_MODEL` — bigger model = fewer steps, higher quality. For
   proof-writing, 235B-class >> 27B-class >> 7B-class.
 - History is compacted (not truncated): once it passes 18 turns, old attempts are folded into a failed-attempts summary so the model stops re-trying dead ends (last 12 turns stay verbatim). Auto-compaction also triggers at 70% of the model's context window (`PROVER_CONTEXT_WINDOW` overrides; `context_window.py`).
-- Temperature is fixed at 0.2 in `agent/llm.py` (proofs want determinism).
+- Temperature defaults to 0.2 in `agent/llm.py` (proofs want determinism);
+  `prove --n-attempts` ramps it per attempt for search diversity.
 
 ---
 

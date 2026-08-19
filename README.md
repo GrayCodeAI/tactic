@@ -7,7 +7,8 @@ type-checks. Ends with ∎
 ## Status
 
 Working agent, 100-problem benchmark, interactive TUI, MCP server,
-session resume/branching, history compaction, theming.
+session resume/branching, history compaction, theming, best-of-N search,
+local Mathlib retrieval, autoformalization, synthetic data tooling.
 Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 68/100**
 (trivial 20/20, easy 23/30, medium 21/30, hard 4/20), $0 cost (free HF endpoint).
 Public leaderboard: **https://lean-prover.github.io/lean-prover/**
@@ -49,12 +50,28 @@ export PROVER_MODEL=gpt-4o
 | `PROVER_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
 | `PROVER_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `PROVER_THINKING` wins. |
 | `PROVER_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
+| `PROVER_RETRIEVE` | unset | `1` enables local Mathlib lemma retrieval hints (keyword index over the pinned mathlib checkout, built lazily in `lean/tmp/lemma_index.json`). |
+| `PROVER_LEMMA_PLAN` | unset | `1` enables lemma-bank planning: propose ≤3 helper lemmas, prove them first, prepend only *proven* ones above the main theorem. |
+| `PROVER_MODEL_<TIER>` | `PROVER_MODEL` | Per-difficulty model override (`<TIER>` = `TRIVIAL`/`EASY`/`MEDIUM`/`HARD`). |
+| `PROVER_TEMP_<TIER>` | caller default | Per-difficulty sampling temperature (float). |
+| `PROVER_STEPS_<TIER>` | caller default | Per-difficulty max repair steps (int). |
 
 ## Usage
 
 ```bash
 # Prove a single theorem interactively (edits lean/src/Prover.lean)
 prover prove "theorem pythagoras (a b c : ℕ) : a ^ 2 + b ^ 2 = c ^ 2 ↔ a = 0" --max-steps 20
+prover prove "..." --n-attempts 3      # best-of-N (temperature ramp per attempt)
+
+# Autoformalize a natural-language statement to a compilable Lean theorem
+prover formalize "For all integers a and b, a + b = b + a."
+
+# Generate a synthetic proof corpus (statement, proof, ok) as JSONL
+prover synth-data --count 20 --out synth.jsonl   # train file: synth_train.jsonl (proven only)
+
+# Import a standard benchmark (MiniF2F Lean4 port) + type-check it
+python benchmark/import_standard.py minif2f --src <miniF2F-lean4 checkout> --split test --verify
+prover bench --problems benchmark/minif2f_test.json
 
 # Interactive TUI: browse problems, watch live repairs, slash commands
 prover tui            # or: prover tui -p 4 (parallel workers)
@@ -69,6 +86,7 @@ prover bench --max-steps 20 --report report.json
 prover bench --parallel 4            # isolation makes parallelism safe
 prover bench --no-goal-feedback      # errors only, no LSP goal state
 prover bench --no-record             # skip JSONL session logs
+prover bench --n-attempts 2          # best-of-N per problem
 
 # Inspect recorded proof sessions (event stream per run)
 prover sessions                      # list recent sessions
@@ -125,6 +143,20 @@ assembled by us, so "prove a different theorem" is structurally
 impossible. History is compacted (old attempts folded into a failed-attempts
 summary) rather than truncated, so weak models stop re-trying dead ends.
 
+Optional search/assistance layers (all env-gated, all default off, all
+best-effort — a failure never breaks the loop):
+- **Best-of-N** (`--n-attempts`): independent repair trajectories with a
+  temperature ramp; hammers run once (they are deterministic); returns the
+  first proof, else the attempt that got furthest.
+- **Lemma retrieval** (`PROVER_RETRIEVE=1`): keyword index over ~150k Mathlib
+  lemma signatures; the top-5 for the target statement are fed to the model
+  as hints (no embeddings, no network).
+- **Lemma planning** (`PROVER_LEMMA_PLAN=1`): the model proposes ≤3 helper
+  lemmas, each is statement-checked and proven by a bounded sub-loop, and
+  only *proven* helpers are prepended above the main theorem (never `sorry`).
+- **Per-difficulty routing** (`PROVER_MODEL_<TIER>` etc.): pick a cheaper
+  model for trivial/easy and a stronger one for hard.
+
 ## Layout
 
 ```
@@ -140,7 +172,12 @@ agent/              the agent (Python)
   compaction.py     failed-attempts summary (tau's memory model)
   lean.py           lake invocation + diagnostic parsing
   llm.py            LLM provider (OpenAI-compatible) + cost tracking
-  lsp.py            Lean language server client (goal-state feedback)
+  lsp.py            Lean language server client (goal-state feedback, run_tactic RPC)
+  retrieval.py      local Mathlib lemma-signature keyword index + search
+  router.py         per-difficulty model/temperature/step routing (env table)
+  formalize.py      autoformalization (NL → compilable Lean theorem)
+  plan.py           lemma-bank planning (prove helpers before the main theorem)
+  synth.py          synthetic proof corpus generation (JSONL + train split)
   mcp.py            MCP server (expose prove_theorem to any agent)
   commands.py       slash-command registry (tau pattern, 22 built-ins)
   paths.py          canonical user/project dir config (env overrides)
@@ -154,8 +191,8 @@ agent/              the agent (Python)
   terminal_title.py OSC terminal title + braille spinner (tau pattern)
   tui.py            Textual TUI (problems, live trace, replay, commands)
   main.py           CLI (prove / bench / tui / mcp / sessions / usage / leaderboard)
-benchmark/          fixed theorem set + runner + merge_reports.py
-tests/              pytest suite (292 tests)
+benchmark/          fixed theorem set + runner + import_standard.py + merge_reports.py
+tests/              pytest suite (317 tests)
 leaderboard.json    local score history (prover leaderboard)
 site/               public leaderboard site (GitHub Pages)
 ```
@@ -185,3 +222,25 @@ site/               public leaderboard site (GitHub Pages)
 - [x] Thinking levels, structured failure log, `--output` renderers, `prover usage` CLI (tau port)
 - [x] Results post + public leaderboard (see leaderboard.json)
 - [x] Public leaderboard site (`site/`, GitHub Pages — updates on every push to leaderboard.json)
+- [x] Best-of-N search (`--n-attempts`, temperature ramp, first-proof-wins)
+- [x] Local Mathlib lemma retrieval (`PROVER_RETRIEVE=1`, ~150k-signature keyword index)
+- [x] Per-difficulty model/temperature/step routing (`PROVER_MODEL_<TIER>` table)
+- [x] Autoformalization (`prover formalize`, NL → compilable Lean, retry on diagnostics)
+- [x] Lemma-bank planning (`PROVER_LEMMA_PLAN=1`, proven-helpers-first)
+- [x] Synthetic data + expert-iteration corpus (`prover synth-data`)
+- [x] MiniF2F benchmark import + type-check (`benchmark/import_standard.py`)
+- [x] LSP `runTactic` primitive (RPC only present on Lean ≥ v4.22; returns None on our pinned v4.20 — verified against the real server)
+
+## Not yet verified / deferred (honest scope)
+
+- Live-model verification of best-of-N, retrieval, planning, routing and
+  formalize is **blocked**: the configured HF backup endpoint answers
+  `/models` but hangs on `/chat/completions` (serverless queue stall). Unit
+  tests pass; end-to-end model runs need a working endpoint.
+- The `runTactic` RPC does not exist in the pinned Lean v4.20.0 toolchain
+  (added in later Lean); the primitive is unit-tested and degrades to `None`.
+- Full MiniF2F score (244 test problems) has not been run through the agent —
+  the statements are type-checked (244/244 compile on Mathlib v4.20.0) but
+  proving them is a long model run.
+- Mathlib bump to current (`grind` tactic), real RL fine-tuning, and upstream
+  contributions are explicitly out of scope (see PROPOSALS.md).
