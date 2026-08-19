@@ -32,10 +32,13 @@ from .session_manager import SessionManager, SessionRecord, history_from_records
 LEAN_DIR = Path(__file__).resolve().parent.parent / "lean"
 
 # Prepended to every agent-written file so tactics/theorems are in scope.
-HEADER = "import Mathlib\n\nopen BigOperators Nat Finset\n\n"
+HEADER = "import Mathlib\nimport ProverSupport\n\nopen BigOperators Nat Finset\n\n"
 
-# One-shot "hammers" tried before spending any LLM tokens. Each costs one
-# `lake build` (~3s) and solves a surprising fraction of problems outright.
+# One-shot hammers tried before spending any LLM tokens. They run as ONE Lean
+# invocation via the native `prover_finish` tactic (Lean-side chain over
+# ProverSupport.hammerNames); the list below is the fallback only when the
+# ProverSupport olean is not built yet (fresh clone). Each costs one
+# `lake env lean` (~3s) and solves a surprising fraction of problems outright.
 HAMMERS = [
     "ring",
     "omega",
@@ -383,18 +386,34 @@ def prove(
                      branch_at=branch_at)
 
     # ---- Hammer pre-pass: try one-shot tactics before spending LLM tokens.
-    # Skipped on resume — the previous run already showed they don't work here —
-    # and when the caller already knows they failed (retries).
+    # Runs as a SINGLE Lean invocation: `prover_finish` executes the whole
+    # hammer chain natively (Lean-side), instead of spawning one `lake env
+    # lean` per hammer. If the ProverSupport olean isn't built (fresh clone,
+    # "unknown module prefix"), fall back to the per-hammer Python loop.
+    # Skipped on resume and when the caller knows hammers already failed.
     if body is None and not skip_hammers:
-        for i, hammer in enumerate(HAMMERS, 1):
-            if stop_requested():
-                break
-            write_file(signature + "\n  " + hammer)
-            ok, output = check_file()
-            emit("hammer", i=i, total=len(HAMMERS), tactic=hammer, ok=ok,
-                 output="" if ok else output[-500:])
-            if ok:
-                return finish(True, i, target_file.read_text(), 0.0)
+        write_file(signature + "\n  prover_finish")
+        ok, output = check_file()
+        if ok:
+            emit("hammer", i=1, total=1, tactic="prover_finish", ok=True, output="")
+            return finish(True, 1, target_file.read_text(), 0.0)
+        if "unknown module prefix 'ProverSupport'" not in output:
+            # native chain ran and failed — every hammer failed
+            emit("hammer", i=1, total=1, tactic="prover_finish", ok=False,
+                 output=output[-500:])
+        else:
+            # ProverSupport not built: per-hammer fallback loop
+            emit("hammer", i=1, total=len(HAMMERS) + 1, tactic="prover_finish",
+                 ok=False, output=output[-500:])
+            for i, hammer in enumerate(HAMMERS, 1):
+                if stop_requested():
+                    break
+                write_file(signature + "\n  " + hammer)
+                ok, output = check_file()
+                emit("hammer", i=i + 1, total=len(HAMMERS) + 1, tactic=hammer,
+                     ok=ok, output="" if ok else output[-500:])
+                if ok:
+                    return finish(True, i, target_file.read_text(), 0.0)
         emit("llm_start")
         body = "  sorry"  # placeholder so the first build reports sorry
     if body is not None:

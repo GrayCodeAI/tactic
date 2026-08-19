@@ -15,8 +15,8 @@ from agent import llm, loop
 
 STATEMENT = "theorem prover_loop (n : ℕ) : n + 0 = n := by sorry"
 
-# 10 hammers + 1 failed step-1 check + 1 passing step-2 check
-PASS_ON_STEP2 = 12
+# 1 native hammer check + 1 failed step-1 check + 1 passing step-2 check
+PASS_ON_STEP2 = 3
 
 
 @pytest.fixture
@@ -65,8 +65,9 @@ def _event_names(r: loop.Result) -> list[str]:
 
 # ---------------------------------------------------------------- hammer pass
 
-def test_hammer_solves_without_llm(hermetic, monkeypatch) -> None:
-    """A one-shot hammer that closes the goal never spends LLM tokens."""
+def test_native_hammer_solves_without_llm(hermetic, monkeypatch) -> None:
+    """`prover_finish` (one Lean invocation) that closes the goal never
+    spends LLM tokens."""
     install_check(monkeypatch, ok_on={1})
     chat_state = install_chat(monkeypatch, ["```lean\n  ring\n```"])
     r = loop.prove(STATEMENT, max_steps=5, verbose=False,
@@ -78,22 +79,47 @@ def test_hammer_solves_without_llm(hermetic, monkeypatch) -> None:
     names = _event_names(r)
     assert "hammer" in names
     assert "llm_start" not in names
-    assert "ring" in r.proof
+    assert "prover_finish" in r.proof
+    file_text = (hermetic / "tmp" / "Prover_hammer-solve.lean").read_text()
+    assert "prover_finish" in file_text
 
 
-def test_hammer_solves_after_some_failures(hermetic, monkeypatch) -> None:
-    """The hammer pass keeps trying tactics until one closes the goal."""
-    install_check(monkeypatch, ok_on={3})  # 3rd hammer (linarith) solves
+def test_fallback_hammer_loop_when_module_missing(hermetic, monkeypatch) -> None:
+    """Without the ProverSupport olean the pre-pass falls back to running
+    each hammer separately (old behavior)."""
+    state = {"calls": 0}
+
+    def check(_f, _d):
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return False, "fake.lean:1:1: error: unknown module prefix 'ProverSupport'\n"
+        return (True, "") if state["calls"] == 4 else (False, "fake.lean:1:1: error: goals remain\n")
+
+    monkeypatch.setattr(loop.lean, "check_file", check)
     chat_state = install_chat(monkeypatch, ["```lean\n  simp\n```"])
     r = loop.prove(STATEMENT, max_steps=5, verbose=False,
                    problem_id="hammer-late", goal_feedback=False,
                    record_session=False)
     assert r.proved
-    assert r.steps == 3
+    assert r.steps == 3  # 3rd fallback hammer (linarith) closes it
     assert chat_state["calls"] == 0
     hammers = [e for e in r.trace if e["event"] == "hammer"]
-    assert [h["tactic"] for h in hammers] == ["ring", "omega", "linarith"]
+    assert [h["tactic"] for h in hammers] == ["prover_finish", "ring", "omega", "linarith"]
     assert hammers[-1]["ok"] is True
+
+
+def test_native_hammer_failure_goes_to_llm(hermetic, monkeypatch) -> None:
+    """When `prover_finish` runs but fails, the loop proceeds to the LLM."""
+    install_check(monkeypatch, ok_on=None)
+    chat_state = install_chat(monkeypatch, ["```lean\n  ring\n```"])
+    r = loop.prove(STATEMENT, max_steps=2, verbose=False,
+                   problem_id="hammer-fail", goal_feedback=False,
+                   record_session=False)
+    assert chat_state["calls"] == 2
+    hammers = [e for e in r.trace if e["event"] == "hammer"]
+    assert len(hammers) == 1
+    assert hammers[0]["tactic"] == "prover_finish"
+    assert hammers[0]["ok"] is False
 
 
 # --------------------------------------------------------------- LLM repairs
@@ -148,7 +174,7 @@ def test_exhausts_max_steps(hermetic, monkeypatch) -> None:
     assert not r.stopped
     assert chat_state["calls"] == 3
     assert r.total_tokens == 3 * 15
-    assert check_state["calls"] == 10 + 3  # 10 hammers + 3 step checks
+    assert check_state["calls"] == 1 + 3  # 1 native hammer check + 3 step checks
     result = [e for e in r.trace if e["event"] == "result"][-1]
     assert result["proved"] is False
 
