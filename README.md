@@ -72,6 +72,13 @@ prover tui            # explicit; or: prover tui -p 4 (parallel workers)
 #   /export <path> /theme [name] /status /model /models /system /hotkeys /clear /quit
 #   /usage [session-id|all] /reload
 
+# Keyboard shortcuts (problem list focused):
+#   j/k       navigate up/down
+#   space     queue selected problem for proof
+#   0/G       jump to top/bottom
+#   /         focus search bar
+#   m/Ctrl+O  open model profiles manager
+
 # Run the benchmark (100 theorems, JSON in benchmark/problems.json)
 prover bench --max-steps 20 --report report.json
 prover bench --parallel 4            # isolation makes parallelism safe
@@ -297,3 +304,27 @@ profile binds a model name to an optional endpoint and overrides:
   and cost dashboard for that model.
 - Resolution: `PROVER_MODEL` env > stored `active` > `gpt-4o`. Env always
   wins, so headless/CI runs are unaffected by TUI-configured profiles.
+
+## TUI keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Navigate problem list down/up |
+| `space` | Queue selected problem for proof |
+| `0` / `G` | Jump to top/bottom of list |
+| `/` | Focus search bar |
+| `Escape` | Blur search, return to prompt |
+| `m` / `Ctrl+O` | Open model profiles manager |
+| `p` | Prove selected |
+| `c` | Prove custom theorem |
+| `r` | Run remaining problems |
+| `s` | Stop current run |
+| `v` | Browse sessions |
+| `l` | Leaderboard |
+| `w` | Set workers |
+| `q` | Quit |
+
+## Live cost meter
+
+The status bar shows real-time token usage and estimated cost during proofs:
+`proved X · failed Y · cost≈$0.0123`. Reset with `/new`.

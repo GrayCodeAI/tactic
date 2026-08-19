@@ -871,6 +871,7 @@ class ProverApp(App):
     #status-bar { dock: bottom; height: 1; background: $panel; padding: 0 1; }
     #board-table { width: 100%; height: 100%; }
     #side { width: 1fr; }
+    #search-bar { height: 1; margin-bottom: 1; }
     """
     # Non-priority single-letter bindings so they don't hijack typing in the
     # prompt bar: they still fire when the problem list is focused because
@@ -883,15 +884,27 @@ class ProverApp(App):
         Binding("s", "stop", "Stop"),
         Binding("v", "sessions", "Sessions"),
         Binding("l", "leaderboard", "Leaderboard"),
+        Binding("m", "open_models", "Models", show=False),
+        Binding("ctrl+o", "open_models", "Models", show=False),
         Binding("ctrl+space", "complete_prompt", show=False),
         Binding("ctrl+k", "open_command_palette", "Commands", show=False),
         Binding("ctrl+e", "edit_queued_message", "Edit queued", show=False),
         Binding("q", "quit_app", "Quit"),
+        Binding("j", "vim_down", "Down", show=False),
+        Binding("k", "vim_up", "Up", show=False),
+        Binding("space", "vim_queue", "Queue", show=False),
+        Binding("0", "vim_home", "Home", show=False),
+        Binding("G", "vim_end", "End", show=False),
+        Binding("/", "focus_search", "Search", show=False),
+        Binding("escape", "blur_search", "Blur", show=False),
     ]
 
     def __init__(self, parallel: int = 1, tui_settings: TuiSettings | None = None) -> None:
         super().__init__()
-        self.problems = load_problems()
+        self.problems: list[dict] = []
+        self._filtered_problems: list[dict] = []
+        self._search_text: str = ""
+        self._total_problems_in_file: int = 0
         self.n_workers = min(max(parallel, 1), MAX_WORKERS)
         self.tui_settings = tui_settings or load_tui_settings()
         self._supports_pyperclip: bool | None = None
@@ -902,6 +915,8 @@ class ProverApp(App):
         self._queued_prompts: list[str] = []
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
         self.command_registry = create_default_command_registry()
+        self._live_tokens: int = 0
+        self._live_cost: float = 0.0
         mode = os.environ.get("PROVER_NOTIFICATION", self.tui_settings.notification)
         self._terminal_notification = TerminalNotificationController(mode)
 
@@ -992,8 +1007,13 @@ class ProverApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="main"):
-            problems_list = ListView(id="problems")
-            yield problems_list
+            with Vertical(id="problems"):
+                yield Input(
+                    placeholder="search problems (type + Enter to load)...",
+                    id="search-bar",
+                )
+                problems_list = ListView(id="problems-list")
+                yield problems_list
             with Vertical(id="side"), TabbedContent(initial="tab-log"):
                 with TabPane("Log", id="tab-log"):
                     yield SelectableRichLog(id="log", wrap=False, markup=True)
@@ -1020,6 +1040,139 @@ class ProverApp(App):
         self._trust_resolution = None
         self.run_worker(self._mount_trust_flow(mode), name="project-trust")
 
+    # -------------------------------------------------------------- search
+
+    def action_focus_search(self) -> None:
+        """Focus the search bar (/, or automatic on mount)."""
+        self.query_one("#search-bar", Input).focus()
+
+    def action_blur_search(self) -> None:
+        """Blur the search bar (escape)."""
+        self.query_one("#prompt", PromptInput).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search-bar":
+            self._filter_problems(event.value)
+            return
+        if event.input.id != "prompt":
+            return
+        text = event.value.strip()
+        event.input.clear()
+        self._hide_completions()
+        if not text:
+            return
+        if text.startswith("/"):
+            result = self.command_registry.execute(self, text)
+            if not result.handled and result.message:
+                self.notify(result.message, severity="warning")
+            if result.handled:
+                self._apply_command(result)
+                return
+            # Unknown slash command: fall back to prompt-template expansion
+            # (tau parity; built-in commands keep precedence over templates).
+            from .prompt_templates import (
+                expand_prompt_template_command,
+                load_prompt_templates,
+            )
+
+            expanded = expand_prompt_template_command(text, load_prompt_templates())
+            if expanded is not None:
+                text = expanded.strip()
+            else:
+                self.notify(f"Unknown command: {text.split()[0]}", severity="warning")
+                return
+        # Plain text: queue as a follow-up proof while a run is active
+        # (tau's queue_follow_up), else treat as an inline theorem.
+        if self._run_active:
+            self._queued_prompts.append(text)
+            self._log(f"[dim]queued:[/dim] {text[:60]}")
+            self.notify(
+                f"Queued ({len(self._queued_prompts)} pending). "
+                "ctrl+e to edit the last one back.",
+                severity="information",
+            )
+            return
+        self.notify("Treat as `/prove`? Press p/c or use /prove <statement>.",
+                    severity="information")
+
+    def _filter_problems(self, query: str) -> None:
+        """Filter problems by query and render the list."""
+        self._search_text = query.strip().lower()
+        if not self._search_text:
+            self._filtered_problems = []
+            self._render_problem_list([])
+            return
+        q = self._search_text
+        results = [
+            p for p in self.problems
+            if q in p.get("id", "").lower()
+            or q in p.get("statement", "").lower()
+            or q in p.get("difficulty", "").lower()
+        ]
+        self._filtered_problems = results
+        self._render_problem_list(results)
+        self._log(f"[dim]found {len(results)} problems matching '{query}'[/dim]")
+
+    def _render_problem_list(self, problems: list[dict]) -> None:
+        """Render the problem list ListView."""
+        list_view = self.query_one("#problems-list", ListView)
+        list_view.clear()
+        if not problems:
+            hint = ("type /bench to load benchmark, "
+                    "or use /import-standard to import a dataset")
+            list_view.append(Static(f"[dim]{hint}[/dim]", id="empty-hint"))
+            return
+        for p in problems[:100]:  # cap at 100 for performance
+            list_view.append(ProblemRow(p))
+        if len(problems) > 100:
+            list_view.append(Static(f"[dim]... and {len(problems) - 100} more[/dim]",
+                                    id="truncated-hint"))
+        self._refresh_status()
+
+    # --------------------------------------------------------------- vim nav
+
+    def action_vim_down(self) -> None:
+        """Move cursor down in problem list (j)."""
+        list_view = self.query_one("#problems-list", ListView)
+        idx = list_view.index
+        if idx is not None and idx < len(list_view.children) - 1:
+            list_view.scroll_to_item(idx + 1)
+
+    def action_vim_up(self) -> None:
+        """Move cursor up in problem list (k)."""
+        list_view = self.query_one("#problems-list", ListView)
+        idx = list_view.index
+        if idx is not None and idx > 0:
+            list_view.scroll_to_item(idx - 1)
+
+    def action_vim_home(self) -> None:
+        """Jump to top of problem list (0)."""
+        list_view = self.query_one("#problems-list", ListView)
+        list_view.scroll_to_item(0)
+
+    def action_vim_end(self) -> None:
+        """Jump to bottom of problem list (G)."""
+        list_view = self.query_one("#problems-list", ListView)
+        list_view.scroll_to_item(len(list_view.children) - 1)
+
+    def action_vim_queue(self) -> None:
+        """Queue the selected problem for proof (space)."""
+        list_view = self.query_one("#problems-list", ListView)
+        idx = list_view.index
+        if idx is None or idx >= len(self._filtered_problems):
+            return
+        problem = self._filtered_problems[idx]
+        self._log(f"[dim]queued: {problem['id']}[/dim]")
+        if not self._run_active:
+            self._start_run([problem])
+        else:
+            self._queued_prompts.append(problem["statement"])
+        self.notify(f"Queued: {problem['id']}")
+
+    def action_open_models(self) -> None:
+        """Open model profiles manager (m or Ctrl+O)."""
+        self.action_models()
+
     def _apply_thinking_level(self) -> None:
         """Push the persisted/configured thinking level into agent.thinking."""
         from . import thinking as thinking_mod
@@ -1028,9 +1181,9 @@ class ProverApp(App):
         thinking_mod.set_thinking_level(level)
 
     async def _mount_trust_flow(self, mode: str) -> None:
-        """Resolve project-input trust off the mount path, then populate the
-        problem list only when trusted. Runs as a worker so the modal's
-        push_screen_wait can be served by the message pump."""
+        """Resolve project-input trust for the repo (tau parity; the TUI
+        defaults to always so headless/tests are unaffected, and
+        PROVER_TRUST=ask enables the interactive modal)."""
         self._register_prover_themes()
         with suppress(Exception):
             self.theme = self.tui_settings.theme
@@ -1039,24 +1192,28 @@ class ProverApp(App):
         )
         if not self._trust_resolution or not self._trust_resolution.trusted:
             self.problems = []
+            self._filtered_problems = []
             self._log("[red]project inputs untrusted — problems not loaded; "
                       "set PROVER_TRUST=always to allow[/red]")
             self._emit_reload_summary(problems=0)
             return
+        # Lazy load: don't populate the list yet; show search box instead
         self.problems = load_problems()
+        self._total_problems_in_file = len(self.problems)
+        self._filtered_problems = []
         if not self.problems:
-            self._log("[red]benchmark/problems.json not found[/red]")
+            self._log("[dim]benchmark/problems.json not found — type a search to find problems[/dim]")
             self._emit_reload_summary(problems=0)
             return
-        problems_list = self.query_one(ListView)
-        problems_list.clear()
-        for p in self.problems:
-            problems_list.append(ProblemRow(p))
+        # Focus search bar for immediate typing
+        search_input = self.query_one("#search-bar", Input)
+        search_input.focus()
         model = self.model
-        self._log(f"model: [cyan]{model}[/cyan] — {len(self.problems)} problems loaded")
-        self._log("[dim]p prove · c custom · r run rest · w workers · s stop · "
-                  "v sessions · l board · q quit[/dim]")
-        self._emit_reload_summary(problems=len(self.problems))
+        self._log(f"model: [cyan]{model}[/cyan] — "
+                  f"[dim]{len(self.problems)} problems available. "
+                  f"Type to search, Enter to load.[/dim]")
+        self._log("[dim]j/k navigate · space queue · p prove · /models config[/dim]")
+        self._emit_reload_summary(problems=0)
 
     def _emit_reload_summary(self, problems: int) -> None:
         """Log a Pi-style before/after resource reload summary (tau parity)."""
@@ -1112,12 +1269,13 @@ class ProverApp(App):
 
     def _status_text(self) -> str:
         done = self.counts["proved"] + self.counts["failed"] + self.counts["stopped"]
-        remaining = max(0, len(self.problems) - done)
+        remaining = max(0, len(self._filtered_problems) - done)
         state = "RUNNING" if self._run_active else "idle"
+        cost_str = f" cost≈${self._live_cost:.4f}" if self._live_cost > 0 else ""
         return (f"{state:<7} workers={self.n_workers} · thinking={self.thinking_level} · "
                 f"proved {self.counts['proved']} · "
                 f"failed {self.counts['failed']} · stopped {self.counts['stopped']} · "
-                f"remaining {remaining}")
+                f"remaining {remaining}{cost_str}")
 
     def _refresh_status(self) -> None:
         self.query_one("#status-bar", Static).update(self._status_text())
@@ -1131,48 +1289,6 @@ class ProverApp(App):
         if event.input.id != "prompt":
             return
         self._refresh_completions(event.input.value)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != "prompt":
-            return
-        text = event.value.strip()
-        event.input.clear()
-        self._hide_completions()
-        if not text:
-            return
-        if text.startswith("/"):
-            result = self.command_registry.execute(self, text)
-            if not result.handled and result.message:
-                self.notify(result.message, severity="warning")
-            if result.handled:
-                self._apply_command(result)
-                return
-            # Unknown slash command: fall back to prompt-template expansion
-            # (tau parity; built-in commands keep precedence over templates).
-            from .prompt_templates import (
-                expand_prompt_template_command,
-                load_prompt_templates,
-            )
-
-            expanded = expand_prompt_template_command(text, load_prompt_templates())
-            if expanded is not None:
-                text = expanded.strip()
-            else:
-                self.notify(f"Unknown command: {text.split()[0]}", severity="warning")
-                return
-        # Plain text: queue as a follow-up proof while a run is active
-        # (tau's queue_follow_up), else treat as an inline theorem.
-        if self._run_active:
-            self._queued_prompts.append(text)
-            self._log(f"[dim]queued:[/dim] {text[:60]}")
-            self.notify(
-                f"Queued ({len(self._queued_prompts)} pending). "
-                "ctrl+e to edit the last one back.",
-                severity="information",
-            )
-            return
-        self.notify("Treat as `/prove`? Press p/c or use /prove <statement>.",
-                    severity="information")
 
     def _refresh_completions(self, text: str) -> None:
         widget = self.query_one("#prompt-completions", Static)
@@ -1223,6 +1339,8 @@ class ProverApp(App):
     def _new_session(self) -> None:
         """Start fresh: reset statuses, counts and panels (tau's _new_session)."""
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
+        self._live_tokens = 0
+        self._live_cost = 0.0
         self._custom_seq = 0
         self._queued_prompts = []
         for row in self.query(ProblemRow):
@@ -1604,6 +1722,16 @@ class ProverApp(App):
                      self.query_one("#errors", RichLog),
                      self.query_one("#proof", RichLog),
                      tag=tag)
+        # Track live token usage for cost meter
+        if ev.get("event") == "llm_response":
+            tokens = ev.get("tokens", 0)
+            if isinstance(tokens, (int, float)):
+                self._live_tokens += int(tokens)
+        elif ev.get("event") == "result":
+            cost = ev.get("cost", 0.0)
+            if isinstance(cost, (int, float)):
+                self._live_cost += float(cost)
+        self._refresh_status()
 
     # ---------------------------------------------------------------- rows/status
 
