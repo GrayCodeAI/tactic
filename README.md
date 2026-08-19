@@ -49,10 +49,13 @@ export PROVER_MODEL=gpt-4o
 | `PROVER_BRANCH_SUMMARY` | `1` | `0` disables model-assisted branch summaries. |
 | `PROVER_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
 | `PROVER_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `PROVER_THINKING` wins. |
-| `PROVER_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
-| `PROVER_RETRIEVE` | unset | `1` enables local lemma retrieval hints: keyword index over the pinned mathlib checkout plus the Lean-proved corpus (`corpus/lean_proved.jsonl`, entries tagged with the tactic that proved them). |
+| `PROVER_LLM_TIMEOUT` | `600` | Hard wall-clock cap (seconds) per LLM call. Slow serverless endpoints (≈1 tok/s) need this raised; the transport itself uses per-phase timeouts only. |
+| `PROVER_RETRIEVE` | unset | `1` enables local lemma retrieval hints: keyword index over the pinned mathlib checkout plus the Lean-proved corpus (`corpus/lean_proved.jsonl`, entries tagged with the tactic that proved them, plus ≤2 worked example blocks). |
 | `PROVER_LEMMA_PLAN` | unset | `1` enables lemma-bank planning: propose ≤3 helper lemmas, prove them first, prepend only *proven* ones above the main theorem. |
 | `PROVER_SEARCH` | unset | `1` upgrades the hammer pre-pass to `prover_search` (the bounded native search tactic: case split / induction / subst / witness search over the hammer chain). Slower, but solves more problems with zero LLM tokens. |
+| `PROVER_SEARCH_DEPTH` | `3` | `prover_search` depth(s); comma-list = depth ramp (`"3,4"` retries the full search at each depth until one closes). |
+| `PROVER_SEARCH_BUDGET` | `1000` | `prover_search` node budget (file-level `set_option prover_search.budget`). |
+| `PROVER_CORPUS_GROW` | `1` | `0` disables the loop's corpus auto-grow (every proved theorem is appended to `corpus/lean_proved.jsonl`). |
 | `PROVER_MODEL_<TIER>` | `PROVER_MODEL` | Per-difficulty model override (`<TIER>` = `TRIVIAL`/`EASY`/`MEDIUM`/`HARD`). |
 | `PROVER_TEMP_<TIER>` | caller default | Per-difficulty sampling temperature (float). |
 | `PROVER_STEPS_<TIER>` | caller default | Per-difficulty max repair steps (int). |
@@ -123,8 +126,13 @@ prover lean-baseline --tactic prover_search --out benchmark/lean_baseline_search
 # Lean-proved corpus (JSONL) from a baseline report
 prover synth-lean --report benchmark/lean_baseline.json --out corpus/lean_proved.jsonl
 
+# SFT/RL training JSONL from Lean-verified corpus + all committed baseline reports
+prover datagen --out benchmark/train_sft.jsonl
+# Writes {"system", "instruction": <theorem>, "output": "```lean\n  <tactic>\n```"} entries.
+# Run this as the loop proof more problems — the corpus auto-grows during proving.
+
 # Tests
-pytest tests/        # 389 tests (loop, compaction, session, TUI, commands, baselines)
+pytest tests/        # 404 tests (loop, compaction, session, TUI, commands, baselines)
 ```
 
 ## How it works
