@@ -125,6 +125,33 @@ def print_report(report: dict) -> None:
     print("  " + " ".join(s["id"] for s in report["unsolved_ids"]) or "  (none)")
 
 
+def _source_of(pid: str) -> str:
+    """Category of a problem id: 'minif2f_amc12_2001_p2' -> 'amc12'."""
+    body = pid
+    for prefix in ("minif2f_",):
+        if body.startswith(prefix):
+            body = body[len(prefix):]
+            break
+    return body.split("_", 1)[0]
+
+
+def print_category_breakdown(report: dict) -> None:
+    """Per-source solved/total breakdown plus the solved ids in each bucket."""
+    by_source: dict[str, dict[str, list[str]]] = {}
+    for s in report["solved_ids"]:
+        by_source.setdefault(_source_of(s["id"]), {"solved": [], "unsolved": []})["solved"].append(s["id"])
+    for s in report["unsolved_ids"]:
+        by_source.setdefault(_source_of(s["id"]), {"solved": [], "unsolved": []})["unsolved"].append(s["id"])
+    print("\nper source:")
+    for src in sorted(by_source):
+        bucket = by_source[src]
+        n = len(bucket["solved"]) + len(bucket["unsolved"])
+        print(f"  {src:<14} {len(bucket['solved']):>3}/{n:<3} "
+              f"({len(bucket['solved']) / n:.0%})")
+        if bucket["solved"]:
+            print(f"      solved: {' '.join(bucket['solved'])}")
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -139,11 +166,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="per-problem Lean timeout (seconds)")
     ap.add_argument("--start", type=int, default=1,
                     help="resume from problem N (1-indexed)")
+    ap.add_argument("--report-only", metavar="REPORT_JSON",
+                    help="load a finished report and print summary/breakdown")
     args = ap.parse_args(argv)
 
     from pathlib import Path
 
     from .loop import LEAN_DIR
+
+    if args.report_only:
+        report = json.loads(Path(args.report_only).read_text())
+        print_report(report)
+        print_category_breakdown(report)
+        return 0
 
     problems = load_problems(Path(args.problems))
     if not problems:

@@ -79,3 +79,44 @@ def test_build_lean_file_search_mode_sets_max_heartbeats():
     assert "set_option maxHeartbeats 0" in text
     plain = lb.build_lean_file("theorem foo (n : \u2115) : n + 0 = n")
     assert "maxHeartbeats" not in plain
+
+
+def test_source_of_categories():
+    assert lb._source_of("minif2f_amc12_2001_p2") == "amc12"
+    assert lb._source_of("minif2f_mathd_algebra_214") == "mathd"
+    assert lb._source_of("minif2f_imo_2000_p1") == "imo"
+    assert lb._source_of("plain_problem_x") == "plain"
+
+
+def test_breakdown_counts_by_source():
+    report = {
+        "solved_ids": [{"id": "minif2f_mathd_algebra_1"}, {"id": "minif2f_imo_2000_p1"}],
+        "unsolved_ids": [{"id": "minif2f_mathd_numbertheory_2"}],
+    }
+    by_source: dict[str, dict[str, list[str]]] = {}
+    for s in report["solved_ids"] + report["unsolved_ids"]:
+        key = lb._source_of(s["id"])
+        bucket = by_source.setdefault(key, {"solved": [], "unsolved": []})
+        which = "solved" if any(s["id"] == x["id"] for x in report["solved_ids"]) else "unsolved"
+        bucket[which].append(s["id"])
+    assert by_source["mathd"]["solved"] == ["minif2f_mathd_algebra_1"]
+    assert by_source["mathd"]["unsolved"] == ["minif2f_mathd_numbertheory_2"]
+    assert by_source["imo"]["solved"] == ["minif2f_imo_2000_p1"]
+
+
+def test_report_only_mode(tmp_path: Path, capsys, monkeypatch):
+    report = {
+        "tactic": "prover_search",
+        "total": 2,
+        "solved": 1,
+        "seconds": 10.0,
+        "tiers": {"minif2f_valid": {"solved": 1, "total": 2}},
+        "solved_ids": [{"id": "minif2f_imo_2000_p1", "difficulty": "minif2f_valid"}],
+        "unsolved_ids": [{"id": "minif2f_mathd_algebra_214", "difficulty": "minif2f_valid"}],
+    }
+    f = tmp_path / "r.json"
+    f.write_text(__import__("json").dumps(report), encoding="utf-8")
+    assert lb.main(["--report-only", str(f)]) == 0
+    out = capsys.readouterr().out
+    assert "prover_search" in out and "1/2" in out
+    assert "imo" in out and "mathd" in out
