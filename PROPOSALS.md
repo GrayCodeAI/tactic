@@ -30,6 +30,7 @@ All 9 items are landed (317 tests green, `ruff` clean). Honest per-item outcome:
 | 7 Synthetic data | ✅ DONE | ✅ Unit. Fine-tuning itself remains External (GPU). |
 | 8 LSP `runTactic` primitive | ✅ DONE | ✅ Unit + ✅ Real-failure: **the RPC `Lean.Widget.runTactic` does not exist in pinned Lean v4.20.0** (server: "No RPC method found"); primitive degrades to `None`, documented. Usable after toolchain bump. |
 | 9 Docs | ✅ DONE | ✅ Unit-consistent (README env/commands match code). |
+| 10 Full-file dynamic mode + adaptive budget | ✅ DONE | ✅ Unit + ✅ Real — extracted full files (model-written helpers) compile on real Lean v4.20; adaptive step extension unit-tested. Model-gain numbers 🔶 blocked (endpoint hangs). |
 
 Blocked live-model verification is a single root cause: the configured HF
 endpoint does not serve inference right now. Everything model-facing is
@@ -160,6 +161,28 @@ its evidence.
 
 ---
 
+## Item 10 — Full-file dynamic mode + adaptive step budget
+**Goal**: the model owns whole files (helpers, definitions, imports) instead
+of a single tactic body — the natural next step after body-only. "Dynamic":
+the loop structurally rewrites the whole file each turn. "Intelligent":
+the step budget extends when the last repair made real progress.
+**Scope**: `prove(..., full_file=True)` — new `SYSTEM_FULL` prompt;
+`_extract_full_file()` splices our canonical signature in place of the
+model's declaration (so the model can never silently change the statement —
+the same safety invariant, now with full code freedom). `import` lines are
+stripped (our header imports Mathlib; Lean rejects late `import`s). Rejected
+replies (missing/renamed theorem) feed a corrective note back.
+`prove(..., adaptive_steps=True)` — extends `max_steps` by 1.5× (≤2 times,
+≤4× original) when the last step reduced diagnostics/goals. CLI: `--full-file`
+and `--adaptive` on `prover prove`/`bench`.
+**Acceptance**: extraction preserves helpers + enforces the canonical
+statement; a full file with a helper lemma compiles on the real toolchain;
+adaptive runs emit `extend` only on progress.
+**Verification level**: ✅ Unit + ✅ Real (extracted full file compiles against
+real Lean v4.20 — verified). Live-model gain: Model-level (endpoint blocked).
+
+---
+
 ## Explicitly deferred (documented, do not attempt here)
 | Item | Why deferred |
 |---|---|
@@ -173,6 +196,7 @@ its evidence.
 
 ## Order & dependencies
 1 (tooling) → 2 (search) → 3 (retrieval) → 4 (router) → 5 (formalize) →
-6 (lemma-plan) → 7 (synth) → 8 (LSP primitive) → 9 (docs) → final double-verify.
-Items 2–7 all build on the existing `prove()` signature and are additive;
+6 (lemma-plan) → 7 (synth) → 8 (LSP primitive) → 9 (docs) → 10 (full-file +
+adaptive) → final double-verify.
+Items 2–10 all build on the existing `prove()` signature and are additive;
 nothing is rewritten.

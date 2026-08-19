@@ -62,6 +62,9 @@ export PROVER_MODEL=gpt-4o
 # Prove a single theorem interactively (edits lean/src/Prover.lean)
 prover prove "theorem pythagoras (a b c : ℕ) : a ^ 2 + b ^ 2 = c ^ 2 ↔ a = 0" --max-steps 20
 prover prove "..." --n-attempts 3      # best-of-N (temperature ramp per attempt)
+prover prove "..." --full-file         # model writes the whole Lean file (helpers/imports);
+                                       # the theorem statement is still enforced
+prover prove "..." --adaptive          # extend the step budget when making progress
 
 # Autoformalize a natural-language statement to a compilable Lean theorem
 prover formalize "For all integers a and b, a + b = b + a."
@@ -87,6 +90,8 @@ prover bench --parallel 4            # isolation makes parallelism safe
 prover bench --no-goal-feedback      # errors only, no LSP goal state
 prover bench --no-record             # skip JSONL session logs
 prover bench --n-attempts 2          # best-of-N per problem
+prover bench --full-file             # model writes whole files per problem
+prover bench --adaptive              # extend step budget on progress
 
 # Inspect recorded proof sessions (event stream per run)
 prover sessions                      # list recent sessions
@@ -156,6 +161,14 @@ best-effort — a failure never breaks the loop):
   only *proven* helpers are prepended above the main theorem (never `sorry`).
 - **Per-difficulty routing** (`PROVER_MODEL_<TIER>` etc.): pick a cheaper
   model for trivial/easy and a stronger one for hard.
+- **Full-file mode** (`--full-file`): the model writes a complete Lean file —
+  helper lemmas, definitions, opens — instead of a single tactic body. The
+  canonical theorem statement is still enforced by splicing our signature
+  over whatever the model wrote for the theorem's declaration, so it can
+  restructure the code but never change the statement.
+- **Adaptive budget** (`--adaptive`): when a repair step reduces the number
+  of compiler diagnostics or open goals, the loop extends its step budget
+  (1.5×, bounded) instead of giving up at the hard cap.
 
 ## Layout
 
@@ -192,7 +205,7 @@ agent/              the agent (Python)
   tui.py            Textual TUI (problems, live trace, replay, commands)
   main.py           CLI (prove / bench / tui / mcp / sessions / usage / leaderboard)
 benchmark/          fixed theorem set + runner + import_standard.py + merge_reports.py
-tests/              pytest suite (317 tests)
+tests/              pytest suite (364 tests)
 leaderboard.json    local score history (prover leaderboard)
 site/               public leaderboard site (GitHub Pages)
 ```
@@ -230,6 +243,7 @@ site/               public leaderboard site (GitHub Pages)
 - [x] Synthetic data + expert-iteration corpus (`prover synth-data`)
 - [x] MiniF2F benchmark import + type-check (`benchmark/import_standard.py`)
 - [x] LSP `runTactic` primitive (RPC only present on Lean ≥ v4.22; returns None on our pinned v4.20 — verified against the real server)
+- [x] Full-file dynamic mode (`--full-file`: model writes whole files; statement enforced) + adaptive step budget (`--adaptive`)
 
 ## Not yet verified / deferred (honest scope)
 
