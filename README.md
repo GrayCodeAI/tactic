@@ -114,8 +114,15 @@ prover leaderboard --show
 # Use lean-prover from any MCP client (Claude, opencode, Cursor, …)
 prover mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
 
+# No-LLM baseline: how many problems Lean itself solves (one `lake env lean` per problem)
+prover lean-baseline --tactic prover_finish --out benchmark/lean_baseline.json
+prover lean-baseline --tactic prover_search --out benchmark/lean_baseline_search.json
+
+# Lean-proved corpus (JSONL) from a baseline report
+prover synth-lean --report benchmark/lean_baseline.json --out corpus/lean_proved.jsonl
+
 # Tests
-pytest tests/        # ~292 tests (loop, compaction, session, TUI, commands)
+pytest tests/        # 375 tests (loop, compaction, session, TUI, commands, baselines)
 ```
 
 ## How it works
@@ -126,8 +133,8 @@ pytest tests/        # ~292 tests (loop, compaction, session, TUI, commands)
         └─────┬──────┘
               ▼
    ┌─────────────────────┐
-   │ hammer pre-pass     │  ring / omega / linarith / simp / …
-   │ (before any LLM)    │  → most easy problems stop here
+   │ hammer pre-pass     │  prover_finish: ring / omega / linarith / simp /
+   │ (before any LLM)    │  aesop / … in ONE `lake env lean`, no model tokens
    └─────────┬───────────┘
              ▼ (no hammer worked)
    ┌─────────────────────┐
@@ -142,6 +149,13 @@ pytest tests/        # ~292 tests (loop, compaction, session, TUI, commands)
               ▼  type-checks
            [PROVED ∎]
 ```
+
+The hammer pre-pass is now Lean-native: `prover_finish` runs the whole chain
+inside one Lean compile (tactics parsed at run time, `runParserCategory`),
+replacing the old 10×`lake env lean` spawns. There is also a bounded
+native search tactic, `prover_search` (case split / induction / subst / use /
+simp_all with backtracking, depth- and budget-capped), and an honest no-LLM
+baseline command to measure what Lean alone solves.
 
 The model only ever supplies the proof body — the theorem statement is
 assembled by us, so "prove a different theorem" is structurally
@@ -204,8 +218,10 @@ agent/              the agent (Python)
   terminal_title.py OSC terminal title + braille spinner (tau pattern)
   tui.py            Textual TUI (problems, live trace, replay, commands)
   main.py           CLI (prove / bench / tui / mcp / sessions / usage / leaderboard)
+  lean_baseline.py  no-LLM baseline runner (prover lean-baseline)
+  synth_lean.py     Lean-proved corpus JSONL writer (prover synth-lean)
 benchmark/          fixed theorem set + runner + import_standard.py + merge_reports.py
-tests/              pytest suite (364 tests)
+tests/              pytest suite (375 tests)
 leaderboard.json    local score history (prover leaderboard)
 site/               public leaderboard site (GitHub Pages)
 ```

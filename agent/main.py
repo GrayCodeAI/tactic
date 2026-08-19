@@ -158,6 +158,21 @@ def cmd_synth(args: argparse.Namespace) -> int:
                        *(["--model", args.model] if args.model else [])])
 
 
+def cmd_lean_baseline(args: argparse.Namespace) -> int:
+    from .lean_baseline import main as baseline_main
+
+    return baseline_main(["--problems", args.problems, "--out", args.out,
+                          "--tactic", args.tactic,
+                          "--timeout", str(args.timeout),
+                          "--start", str(args.start)])
+
+
+def cmd_lean_synth(args: argparse.Namespace) -> int:
+    from .synth_lean import main as synth_main
+
+    return synth_main(["--report", args.report, "--out", args.out])
+
+
 def cmd_tui(args: argparse.Namespace) -> int:
     try:
         from .tui import main as tui_main
@@ -377,6 +392,23 @@ def cli() -> None:
     sy.add_argument("--model", default=None, help="model name (default: PROVER_MODEL)")
     sy.add_argument("--no-hammers", action="store_true", help="skip hammer pre-pass")
     sy.set_defaults(fn=cmd_synth)
+
+    lbn = sub.add_parser("lean-baseline",
+                         help="no-LLM baseline: how many problems Lean itself solves "
+                              "(one `lake env lean` per problem)")
+    lbn.add_argument("--problems", default="benchmark/problems.json")
+    lbn.add_argument("--out", default="benchmark/lean_baseline.json")
+    lbn.add_argument("--tactic", default="prover_finish",
+                     help="native tactic: prover_finish (hammers) | prover_search (bounded search)")
+    lbn.add_argument("--timeout", type=int, default=120)
+    lbn.add_argument("--start", type=int, default=1, help="resume from problem N (1-indexed)")
+    lbn.set_defaults(fn=cmd_lean_baseline)
+
+    sl = sub.add_parser("synth-lean",
+                        help="write a Lean-proved corpus JSONL from a baseline report")
+    sl.add_argument("--report", default="benchmark/lean_baseline.json")
+    sl.add_argument("--out", default="corpus/lean_proved.jsonl")
+    sl.set_defaults(fn=cmd_lean_synth)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
     t.add_argument("-p", "--parallel", type=int, default=1,
