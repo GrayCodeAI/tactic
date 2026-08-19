@@ -460,12 +460,18 @@ def prove(
             hits = []
         if hits:
             retrieval_hints = (
-                "Relevant Mathlib lemmas found by local keyword search "
+                "Relevant lemmas found by local keyword search "
                 "(name : signature):\n"
-                + "\n".join(f"- {h['name']} : {h['signature']}" for h in hits)
+                + "\n".join(
+                    f"- {h['name']} : {h['signature']}"
+                    + (f" — proven by {h['proof']}" if h.get("proof") else "")
+                    for h in hits
+                )
                 + "\n\n"
             )
-            emit("retrieve", k=len(hits), lemmas=[h["name"] for h in hits])
+            emit("retrieve", k=len(hits),
+                 lemmas=[h["name"] for h in hits],
+                 corpus=sum(1 for h in hits if h.get("file") == "corpus"))
 
     base_max_steps = max_steps
     extensions = 0

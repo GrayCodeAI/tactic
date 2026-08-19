@@ -50,7 +50,7 @@ export PROVER_MODEL=gpt-4o
 | `PROVER_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
 | `PROVER_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `PROVER_THINKING` wins. |
 | `PROVER_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
-| `PROVER_RETRIEVE` | unset | `1` enables local Mathlib lemma retrieval hints (keyword index over the pinned mathlib checkout, built lazily in `lean/tmp/lemma_index.json`). |
+| `PROVER_RETRIEVE` | unset | `1` enables local lemma retrieval hints: keyword index over the pinned mathlib checkout plus the Lean-proved corpus (`corpus/lean_proved.jsonl`, entries tagged with the tactic that proved them). |
 | `PROVER_LEMMA_PLAN` | unset | `1` enables lemma-bank planning: propose ≤3 helper lemmas, prove them first, prepend only *proven* ones above the main theorem. |
 | `PROVER_SEARCH` | unset | `1` upgrades the hammer pre-pass to `prover_search` (the bounded native search tactic: case split / induction / subst / witness search over the hammer chain). Slower, but solves more problems with zero LLM tokens. |
 | `PROVER_MODEL_<TIER>` | `PROVER_MODEL` | Per-difficulty model override (`<TIER>` = `TRIVIAL`/`EASY`/`MEDIUM`/`HARD`). |

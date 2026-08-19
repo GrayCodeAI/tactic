@@ -151,6 +151,36 @@ def _score(signature: str, target: set[str]) -> float:
     return (weighted + exact) / (len(sig_tokens) ** 0.5)
 
 
+def load_corpus(lean_dir: Path) -> list[dict]:
+    """Lean-proved corpus entries as searchable index items.
+
+    Reads ``<repo>/corpus/lean_proved.jsonl`` (written by ``prover
+    synth-lean``) so the loop can surface statements Lean already proved as
+    retrieval hints, tagged with the tactic that closed them. Missing or
+    unparseable corpus files are simply skipped — retrieval stays best-effort.
+    """
+    f = lean_dir.parent / "corpus" / "lean_proved.jsonl"
+    if not f.exists():
+        return []
+    out: list[dict] = []
+    for line in f.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        stmt = str(e.get("statement", ""))
+        sig = stmt.split(":=")[0].strip()[:SIG_CAP]
+        if not stmt:
+            continue
+        out.append({
+            "name": str(e.get("id", "?")),
+            "signature": sig,
+            "file": "corpus",
+            "proof": str(e.get("tactic", "")),
+        })
+    return out
+
+
 def search_lemmas(
     statement: str,
     k: int = DEFAULT_K,
@@ -160,7 +190,9 @@ def search_lemmas(
     """Return the top-k most relevant Mathlib lemma signatures for a statement."""
     from .loop import LEAN_DIR
 
-    idx = index if index is not None else load_index(lean_dir or LEAN_DIR)
+    lean_dir = lean_dir or LEAN_DIR
+    idx = list(index) if index is not None else load_index(lean_dir)
+    idx += load_corpus(lean_dir)
     target = _tokens(statement)
     scored = [(e, _score(e["signature"], target)) for e in idx]
     scored.sort(key=lambda pair: pair[1], reverse=True)

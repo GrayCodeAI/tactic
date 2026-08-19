@@ -119,3 +119,49 @@ def test_load_index_recovers_from_corrupt_cache(tmp_path: Path) -> None:
     cache.write_text("{{{ not json", encoding="utf-8")
     idx = retrieval.load_index(tmp_path)
     assert len(idx) == 5
+
+
+def _write_corpus(tmp_path: Path, id_: str, statement: str, tactic: str) -> None:
+    import json
+
+    corpus = tmp_path.parent / "corpus"
+    corpus.mkdir(parents=True, exist_ok=True)
+    f = corpus / "lean_proved.jsonl"
+    entry = json.dumps({"id": id_, "difficulty": "trivial",
+                        "statement": statement, "tactic": tactic})
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(entry + "\n")
+
+
+def test_load_corpus_parses_entries(tmp_path: Path) -> None:
+    write_mathlib(tmp_path, FILES)
+    _write_corpus(tmp_path, "tpl_add_comm",
+                  "theorem prover_tpl_add_comm (a b : ℕ) : a + b = b + a := by\n  sorry",
+                  "prover_finish")
+    entries = retrieval.load_corpus(tmp_path)
+    assert len(entries) == 1
+    e = entries[0]
+    assert e["name"] == "tpl_add_comm"
+    assert e["proof"] == "prover_finish"
+    assert e["file"] == "corpus"
+    assert "a + b = b + a" in e["signature"]
+    assert ":=" not in e["signature"]
+
+
+def test_search_includes_corpus_hints(tmp_path: Path) -> None:
+    write_mathlib(tmp_path, FILES)
+    _write_corpus(tmp_path, "tpl_add_comm",
+                  "theorem prover_tpl_add_comm (a b : ℕ) : a + b = b + a := by\n  sorry",
+                  "prover_finish")
+    idx = retrieval.build_index(tmp_path)
+    hits = retrieval.search_lemmas(
+        "theorem prover_x (a b : ℕ) : a + b = b + a", k=3,
+        lean_dir=tmp_path, index=idx)
+    assert any(h["name"] == "tpl_add_comm" and h["proof"] == "prover_finish"
+               for h in hits)
+
+
+def test_load_corpus_missing_file_returns_empty(tmp_path: Path) -> None:
+    bare = tmp_path / "no_corpus_here"
+    bare.mkdir()
+    assert retrieval.load_corpus(bare) == []

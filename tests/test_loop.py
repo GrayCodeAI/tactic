@@ -445,6 +445,29 @@ def test_retrieval_failure_does_not_break_loop(hermetic, monkeypatch) -> None:
     assert captured[0].startswith("Theorem signature:")
 
 
+def test_retrieval_corpus_hit_shows_proof(hermetic, monkeypatch) -> None:
+    """A corpus entry (Lean-proved statement) is surfaced with its tactic so
+    the model knows the goal is reachable by the native chain."""
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.setenv("PROVER_RETRIEVE", "1")
+    monkeypatch.setattr(
+        "agent.retrieval.search_lemmas",
+        lambda *a, **k: [{
+            "name": "tpl_add_zero_nat",
+            "signature": "theorem prover_tpl_add_zero_nat (a : ℕ) : a + 0 = a",
+            "file": "corpus",
+            "proof": "prover_finish",
+        }])
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="retrieve-corpus", goal_feedback=False,
+                   record_session=False)
+    assert "proven by prover_finish" in captured[0]
+    retrieve = next(e for e in r.trace if e["event"] == "retrieve")
+    assert retrieve["corpus"] == 1
+
+
 # -------------------------------------------------------------------- routing
 
 def test_router_selects_model_for_difficulty(hermetic, monkeypatch) -> None:
