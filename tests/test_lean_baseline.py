@@ -71,7 +71,7 @@ def test_run_baseline_aggregates_and_tiers(tmp_path: Path, monkeypatch):
 
 def test_build_lean_file_custom_tactic():
     text = lb.build_lean_file("theorem foo (n : \u2115) : n + 0 = n", "prover_search")
-    assert text.rstrip().endswith("prover_search")
+    assert text.rstrip().endswith("prover_search 3")
 
 
 def test_build_lean_file_search_mode_sets_max_heartbeats():
@@ -79,6 +79,16 @@ def test_build_lean_file_search_mode_sets_max_heartbeats():
     assert "set_option maxHeartbeats 0" in text
     plain = lb.build_lean_file("theorem foo (n : \u2115) : n + 0 = n")
     assert "maxHeartbeats" not in plain
+
+
+def test_build_lean_file_search_budget_and_depth():
+    text = lb.build_lean_file("theorem foo (n : \u2115) : n + 0 = n",
+                              "prover_search", search_budget=4000, search_depth=4)
+    assert "set_option prover_search.budget 4000" in text
+    assert text.rstrip().endswith("prover_search 4")
+    default = lb.build_lean_file("theorem foo (n : \u2115) : n + 0 = n", "prover_search")
+    assert "prover_search 3" in default
+    assert "prover_search.budget" not in default
 
 
 def test_source_of_categories():

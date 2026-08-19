@@ -429,12 +429,31 @@ def prove(
     # Skipped on resume and when the caller knows hammers already failed.
     if body is None and not skip_hammers:
         prepass = "prover_search" if os.environ.get("PROVER_SEARCH") else "prover_finish"
-        prepass_opts = "set_option maxHeartbeats 0\n" if prepass == "prover_search" else ""
-        write_file(prepass_opts + signature + "\n  " + prepass)
-        ok, output = check_file()
-        if ok:
-            emit("hammer", i=1, total=1, tactic=prepass, ok=True, output="")
-            return finish(True, 1, target_file.read_text(), 0.0)
+        prepass_opts = ""
+        depths = ["3"]
+        budget = "1000"
+        if prepass == "prover_search":
+            raw_depths = os.environ.get("PROVER_SEARCH_DEPTH", "3")
+            depths = [d for d in raw_depths.split(",") if d.strip().isdigit()] or ["3"]
+            b = os.environ.get("PROVER_SEARCH_BUDGET", "1000")
+            budget = b if b.isdigit() else "1000"
+            prepass_opts = "set_option maxHeartbeats 0\n"
+            if budget != "1000":
+                prepass_opts += f"set_option prover_search.budget {budget}\n"
+        # Depth ramp (PROVER_SEARCH_DEPTH="3,4,5"): retry the whole search at
+        # each depth until something closes. Budget budget is shared per depth.
+        for d in depths:
+            tactic = f"prover_search {d}" if prepass == "prover_search" else "prover_finish"
+            write_file(prepass_opts + signature + "\n  " + tactic)
+            ok, output = check_file()
+            if ok:
+                emit("hammer", i=1, total=1, tactic=tactic, ok=True, output="")
+                return finish(True, 1, target_file.read_text(), 0.0)
+            if prepass != "prover_search":
+                break
+            if d != depths[-1]:
+                emit("hammer", i=int(d), total=len(depths), tactic=tactic,
+                     ok=False, output=output[-500:])
         if "unknown module prefix 'ProverSupport'" not in output:
             # native chain ran and failed — every hammer failed
             emit("hammer", i=1, total=1, tactic=prepass, ok=False,

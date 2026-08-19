@@ -34,10 +34,14 @@ def _signature(statement: str) -> str:
     return s + " := by"
 
 
-def build_lean_file(statement: str, tactic: str = "prover_finish") -> str:
+def build_lean_file(statement: str, tactic: str = "prover_finish",
+                    search_budget: int = 1000, search_depth: int = 3) -> str:
     """The single-file check body: header + statement + one native tactic."""
     options = SEARCH_OPTIONS if tactic == "prover_search" else ""
-    return HEADER + options + _signature(statement) + "\n  " + tactic + "\n"
+    if tactic == "prover_search" and search_budget != 1000:
+        options += f"set_option prover_search.budget {search_budget}\n"
+    body = "prover_finish" if tactic == "prover_finish" else f"prover_search {search_depth}"
+    return HEADER + options + _signature(statement) + "\n  " + body + "\n"
 
 
 @dataclass
@@ -67,6 +71,8 @@ def run_baseline(
     tmp_dir: Path,
     tactic: str = "prover_finish",
     timeout: int = 120,
+    search_budget: int = 1000,
+    search_depth: int = 3,
 ) -> dict:
     tmp_dir.mkdir(parents=True, exist_ok=True)
     solved: list[dict] = []
@@ -74,7 +80,8 @@ def run_baseline(
     t0 = time.time()
     for i, p in enumerate(problems, 1):
         f = tmp_dir / f"Baseline_{p.id}.lean"
-        f.write_text(build_lean_file(p.statement, tactic), encoding="utf-8")
+        f.write_text(build_lean_file(p.statement, tactic, search_budget,
+                                     search_depth), encoding="utf-8")
         ok, output = check_file(f, lean_dir, timeout=timeout)
         entry = {
             "id": p.id,
@@ -91,6 +98,8 @@ def run_baseline(
         "total": len(problems),
         "solved": len(solved),
         "seconds": round(time.time() - t0, 2),
+        "search_budget": search_budget if tactic == "prover_search" else None,
+        "search_depth": search_depth if tactic == "prover_search" else None,
         "tiers": _tiers(solved, problems),
         "solved_ids": solved,
         "unsolved_ids": unsolved,
@@ -164,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="native tactic to try (prover_finish | prover_search)")
     ap.add_argument("--timeout", type=int, default=120,
                     help="per-problem Lean timeout (seconds)")
+    ap.add_argument("--search-budget", type=int, default=1000,
+                    help="prover_search node budget (default 1000, e.g. 4000)")
+    ap.add_argument("--search-depth", type=int, default=3,
+                    help="prover_search depth (default 3, e.g. 4)")
     ap.add_argument("--start", type=int, default=1,
                     help="resume from problem N (1-indexed)")
     ap.add_argument("--report-only", metavar="REPORT_JSON",
@@ -189,7 +202,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"baseline: {len(problems)} problems, tactic={args.tactic}, "
           f"lean_dir={LEAN_DIR}", file=sys.stderr)
     report = run_baseline(problems, LEAN_DIR, LEAN_DIR / "tmp",
-                          tactic=args.tactic, timeout=args.timeout)
+                          tactic=args.tactic, timeout=args.timeout,
+                          search_budget=args.search_budget,
+                          search_depth=args.search_depth)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2),

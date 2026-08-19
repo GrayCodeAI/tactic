@@ -136,7 +136,7 @@ def test_prover_search_prepass_closes_without_llm(hermetic, monkeypatch) -> None
     assert r.steps == 1
     assert chat_state["calls"] == 0
     hammers = [e for e in r.trace if e["event"] == "hammer"]
-    assert hammers[0]["tactic"] == "prover_search"
+    assert hammers[0]["tactic"] == "prover_search 3"
     assert hammers[0]["ok"] is True
     assert "prover_search" in r.proof
     file_text = (hermetic / "tmp" / "Prover_search-solve.lean").read_text()

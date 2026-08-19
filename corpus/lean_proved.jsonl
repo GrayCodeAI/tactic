@@ -100,3 +100,4 @@
 {"id": "tpl_factorial_pos", "difficulty": "easy", "statement": "theorem prover_tpl_factorial_pos (n : ℕ) : 0 < n.factorial := by\n  sorry", "tactic": "prover_finish"}
 {"id": "tpl_choose_self", "difficulty": "easy", "statement": "theorem prover_tpl_choose_self (n : ℕ) : n.choose n = 1 := by\n  sorry", "tactic": "prover_finish"}
 {"id": "tpl_pow_two_add_comm", "difficulty": "easy", "statement": "theorem prover_tpl_pow_two_add_comm (a b : ℤ) : a ^ 2 + b ^ 2 = b ^ 2 + a ^ 2 := by\n  sorry", "tactic": "prover_finish"}
+{"id": "parity_8e4c01d0", "difficulty": "auto", "statement": "theorem parity (n : ℕ) : 2 ∣ n * (n + 1)", "tactic": "prover_search"}

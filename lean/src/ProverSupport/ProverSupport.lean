@@ -150,17 +150,23 @@ partial def proverSearchDepth (budget : Nat) (depth : Nat) : TacticM Unit := do
     return
   throwError "prover_search: nothing closed at depth {depth}"
 
+register_option prover_search.budget : Nat := {
+  defValue := 1000
+  descr := "node budget for `prover_search`"
+}
+
 /-- `prover_search` — bounded goal decomposition + backtracking.
 
 Tries, in order, at every node: the hammer chain (`prover_finish`), case
 split on local variables, induction on data variables, substitution along
 equalities, witness search for existential goals, and `simp_all`; recursing
-up to `depth` levels (default 3), capping the total search at 1000 nodes.
-Deterministic and LLM-free. -/
+up to `depth` levels (default 3) with a node budget (default 1000, raised
+via the `prover_search.budget` option). Deterministic and LLM-free. -/
 elab "prover_search" n:(num)? : tactic => do
+  let budget := prover_search.budget.get (← getOptions)
   let depth := match n with
     | some s => s.getNat
     | none => 3
-  proverSearchDepth 1000 depth
+  proverSearchDepth budget depth
 
 end ProverSupport
