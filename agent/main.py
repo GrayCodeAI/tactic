@@ -199,6 +199,19 @@ def cmd_datagen(args: argparse.Namespace) -> int:
     return datagen_main(argv)
 
 
+def cmd_finetune(args: argparse.Namespace) -> int:
+    from .finetune import main as finetune_main
+
+    argv: list[str] = []
+    if args.fidelity:
+        argv += ["--fidelity", "--chat", args.chat, "--chat-out", args.chat_out,
+                 "--report", args.report, "--timeout", str(args.timeout)]
+    else:
+        argv += ["--prepare", "--sft", args.sft, "--chat", args.chat,
+                 "--launcher", args.launcher]
+    return finetune_main(argv)
+
+
 def cmd_tui(args: argparse.Namespace) -> int:
     try:
         from .tui import main as tui_main
@@ -445,12 +458,28 @@ def cli(argv: list[str] | None = None) -> None:
     sl.set_defaults(fn=cmd_lean_synth)
 
     dg = sub.add_parser("datagen",
-                        help="emit SFT/RL training JSONL from the Lean-verified "
-                             "corpus + baseline reports (expert data, no model)")
+                        help="generate (statement, tactic) expert data for SFT/RL "
+                             "from the Lean-verified corpus + baseline reports")
     dg.add_argument("--corpus", default="corpus/lean_proved.jsonl")
-    dg.add_argument("--report", action="append", default=[])
+    dg.add_argument("--report", action="append", default=[],
+                    help="JSON report (repeatable); default: all committed baseline "
+                         "reports under benchmark/")
     dg.add_argument("--out", default="benchmark/train_sft.jsonl")
     dg.set_defaults(fn=cmd_datagen)
+
+    ft = sub.add_parser("finetune",
+                        help="LoRA data prep (--prepare, default) or Lean fidelity "
+                             "certification of training data (--fidelity)")
+    ft.add_argument("--fidelity", action="store_true",
+                    help="re-prove every training entry with real Lean; "
+                         "write certified subset + report")
+    ft.add_argument("--sft", default="benchmark/train_sft.jsonl")
+    ft.add_argument("--chat", default="benchmark/train_chat.jsonl")
+    ft.add_argument("--chat-out", default="benchmark/train_chat_fidelity.jsonl")
+    ft.add_argument("--report", default="benchmark/fidelity_report.json")
+    ft.add_argument("--launcher", default="benchmark/finetune_lora.sh")
+    ft.add_argument("--timeout", type=int, default=120)
+    ft.set_defaults(fn=cmd_finetune)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
     t.add_argument("-p", "--parallel", type=int, default=1,
