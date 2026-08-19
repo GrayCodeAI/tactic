@@ -309,6 +309,17 @@ def prove(
         secs = time.time() - t0
         if lsp_client:
             lsp_client.close()
+        if (
+            proved and not stopped
+            and os.environ.get("PROVER_CORPUS_GROW", "1") == "1"
+            and not resume_from
+        ):
+            try:
+                from .retrieval import corpus_append
+
+                corpus_append(LEAN_DIR, statement, proof)
+            except Exception:  # noqa: BLE001, S110 — corpus growth is best-effort
+                pass
         emit(
             "result",
             proved=proved,

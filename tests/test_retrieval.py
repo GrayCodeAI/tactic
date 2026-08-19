@@ -165,3 +165,26 @@ def test_load_corpus_missing_file_returns_empty(tmp_path: Path) -> None:
     bare = tmp_path / "no_corpus_here"
     bare.mkdir()
     assert retrieval.load_corpus(bare) == []
+
+
+def test_corpus_append_writes_dedupe_and_loads(tmp_path: Path) -> None:
+    # Nest so corpus_path (lean_dir.parent / "corpus") stays test-local.
+    lean_dir = tmp_path / "proj" / "lean"
+    write_mathlib(lean_dir, FILES)
+    stmt = "theorem auto_proved (a b c : ℕ) (h : a ∣ b) : a ∣ b * c := by sorry"
+    assert retrieval.corpus_append(lean_dir, stmt, "  prover_finish") is True
+    assert retrieval.corpus_append(lean_dir, stmt, "  prover_finish") is False
+    entries = retrieval.load_corpus(lean_dir)
+    assert len(entries) == 1
+    assert entries[0]["proof"] == "prover_finish"
+    assert "a ∣ b" in entries[0]["signature"]
+
+
+def test_corpus_append_stores_llm_tactic_text(tmp_path: Path) -> None:
+    lean_dir = tmp_path / "proj2" / "lean"
+    lean_dir.mkdir(parents=True)
+    stmt = "theorem auto2 (n : ℕ) : n + 0 = n := by sorry"
+    proof = "by\n  induction n\n  · rfl\n  · simp_all [Nat.succ_add]"
+    assert retrieval.corpus_append(lean_dir, stmt, proof) is True
+    entries = retrieval.load_corpus(lean_dir)
+    assert "simp_all [Nat.succ_add]" in entries[0]["proof"]

@@ -1,6 +1,9 @@
 import Mathlib
+import ProverSupport
 
 open BigOperators Nat Finset
 
-theorem prover_not_not_self_eq (a : ℕ) : ¬¬(a = a) := by
-  omega
+theorem sq_odd (n : ℕ) (h : Odd n) : ∃ k : ℕ, n * n = 4 * k + 1 := by
+  obtain ⟨m, rfl⟩ := h
+  use m * (m + 1)
+  ring

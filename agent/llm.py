@@ -7,7 +7,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from openai import OpenAI
+from openai import OpenAI, Timeout
 
 _client: OpenAI | None = None
 
@@ -15,16 +15,21 @@ _client: OpenAI | None = None
 # received, so slow-streaming reasoning endpoints can hang forever without
 # this. The call runs in a daemon thread so a hung request can never block
 # process exit (ThreadPoolExecutor's atexit join would otherwise do that).
-HARD_TIMEOUT = float(os.environ.get("PROVER_LLM_TIMEOUT", "180"))
+HARD_TIMEOUT = float(os.environ.get("PROVER_LLM_TIMEOUT", "600"))
 
 
 def client() -> OpenAI:
     global _client
     if _client is None:
+        # No total-deadline: slow serverless endpoints stream at ~1 tok/s and
+        # would trip a scalar total timeout. Per-phase timeouts keep failures
+        # fast (connect/write/pool); read must be huge because the server can
+        # sit silent for minutes on prefill before the first byte. The wall-
+        # clock cap is enforced by HARD_TIMEOUT via the worker thread join.
         _client = OpenAI(
             api_key=os.environ.get("OPENAI_API_KEY", "unused"),
             base_url=os.environ.get("OPENAI_BASE_URL"),
-            timeout=120.0,      # free tiers hang; fail fast and retry
+            timeout=Timeout(connect=15.0, read=900.0, write=15.0, pool=15.0),
             max_retries=2,
         )
     return _client
@@ -109,7 +114,9 @@ def _call(system: str, messages: list[dict], temperature: float, model_name: str
         "model": model_name or model(),
         "messages": [{"role": "system", "content": system}, *messages],
         "temperature": temperature,
-        "max_tokens": 16384,
+        # Cap output: proofs are ~200-800 tokens; a generous ceiling keeps the
+        # worst case (no EOS emitted) from burning hours on slow endpoints.
+        "max_tokens": 4096,
     }
     level = thinking_level_from_env()
     if level == "off" and os.environ.get("OPENAI_BASE_URL"):

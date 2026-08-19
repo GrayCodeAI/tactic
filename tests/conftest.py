@@ -21,3 +21,9 @@ def _reset_allow_select():
     from agent import thinking
 
     thinking.clear_thinking_level()
+
+
+@pytest.fixture(autouse=True)
+def _no_corpus_growth(monkeypatch):
+    """Keep test-driven proofs from writing into the real repo corpus."""
+    monkeypatch.setenv("PROVER_CORPUS_GROW", "0")

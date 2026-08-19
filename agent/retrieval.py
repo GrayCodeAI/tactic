@@ -151,15 +151,57 @@ def _score(signature: str, target: set[str]) -> float:
     return (weighted + exact) / (len(sig_tokens) ** 0.5)
 
 
+def corpus_path(lean_dir: Path) -> Path:
+    """The Lean-proved corpus JSONL for a checkout (``<repo>/corpus/``)."""
+    return lean_dir.parent / "corpus" / "lean_proved.jsonl"
+
+
+def corpus_append(lean_dir: Path, statement: str, proof: str) -> bool:
+    """Record a freshly proved theorem in the corpus (idempotent by id).
+
+    Called by the loop after every successful proof, so the corpus grows by
+    use. The stored tactic column is the native tactic when the file was
+    closed by a pre-pass, otherwise the verified tactic text. Best-effort:
+    never raises into the proof loop.
+    """
+    import hashlib
+
+    from .synth_lean import append_lines
+
+    m = re.search(r"(?:theorem|lemma|def|example)\s+([A-Za-z0-9_'.]+)", statement)
+    base = m.group(1) if m else "auto"
+    name = base + "_" + hashlib.sha1(statement.encode("utf-8")).hexdigest()[:8]
+    header = statement.split(":=")[0].strip()
+    if "prover_finish" in proof or "prover_search" in proof:
+        tag = "prover_finish" if "prover_finish" in proof else "prover_search"
+    else:
+        tag = proof.strip()
+    path = corpus_path(lean_dir)
+    if path.exists():
+        seen = set()
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                seen.add(json.loads(line).get("id", ""))
+            except json.JSONDecodeError:
+                continue
+        if name in seen:
+            return False
+    append_lines([
+        {"id": name, "difficulty": "auto", "statement": header, "tactic": tag},
+    ], path)
+    return True
+
+
 def load_corpus(lean_dir: Path) -> list[dict]:
     """Lean-proved corpus entries as searchable index items.
 
     Reads ``<repo>/corpus/lean_proved.jsonl`` (written by ``prover
-    synth-lean``) so the loop can surface statements Lean already proved as
-    retrieval hints, tagged with the tactic that closed them. Missing or
-    unparseable corpus files are simply skipped — retrieval stays best-effort.
+    synth-lean`` and grown by the loop after each solved proof) so the loop
+    can surface statements Lean already proved as retrieval hints, tagged
+    with the tactic that closed them. Missing or unparseable corpus files
+    are simply skipped — retrieval stays best-effort.
     """
-    f = lean_dir.parent / "corpus" / "lean_proved.jsonl"
+    f = corpus_path(lean_dir)
     if not f.exists():
         return []
     out: list[dict] = []
