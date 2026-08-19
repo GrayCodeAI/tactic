@@ -348,9 +348,12 @@ def cmd_leaderboard(args: argparse.Namespace) -> int:
     return 0
 
 
-def cli() -> None:
-    ap = argparse.ArgumentParser(prog="prover", description="Lean 4 proof agent")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+def cli(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(
+        prog="prover",
+        description="Lean 4 proof agent. Run `prover` with no arguments to open the interactive TUI.",
+    )
+    sub = ap.add_subparsers(dest="cmd")
 
     p = sub.add_parser("prove", help="prove a single theorem")
     p.add_argument("statement", help="Lean theorem statement (with proof or sorry)")
@@ -458,7 +461,9 @@ def cli() -> None:
     lb.add_argument("--show", action="store_true", help="only show current leaderboard")
     lb.set_defaults(fn=cmd_leaderboard)
 
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.cmd is None:
+        return cmd_tui(argparse.Namespace(parallel=1))
     sys.exit(args.fn(args))
 
 

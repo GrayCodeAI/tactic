@@ -78,7 +78,8 @@ python benchmark/import_standard.py minif2f --src <miniF2F-lean4 checkout> --spl
 prover bench --problems benchmark/minif2f_test.json
 
 # Interactive TUI: browse problems, watch live repairs, slash commands
-prover tui            # or: prover tui -p 4 (parallel workers)
+prover                # no args = TUI (the default entry point)
+prover tui            # explicit; or: prover tui -p 4 (parallel workers)
 
 # Slash commands inside the TUI prompt bar (Tab-less: ctrl+space completes):
 #   /help /prove /run /stop /workers <n> /resume <id> /branch <id> [turn]
@@ -123,7 +124,7 @@ prover lean-baseline --tactic prover_search --out benchmark/lean_baseline_search
 prover synth-lean --report benchmark/lean_baseline.json --out corpus/lean_proved.jsonl
 
 # Tests
-pytest tests/        # 379 tests (loop, compaction, session, TUI, commands, baselines)
+pytest tests/        # 389 tests (loop, compaction, session, TUI, commands, baselines)
 ```
 
 ## How it works

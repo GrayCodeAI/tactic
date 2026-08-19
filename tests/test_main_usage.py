@@ -6,6 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
+import pytest
+
 from agent import main
 
 
@@ -24,6 +26,33 @@ def _write_usage_session(dir_path: Path, name: str, steps: int = 2) -> Path:
 
 def _ns(**kw) -> argparse.Namespace:
     return argparse.Namespace(**kw)
+
+
+def test_no_args_launches_tui(monkeypatch) -> None:
+    calls: list[object] = []
+
+    def fake_tui(args: argparse.Namespace) -> int:
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(main, "cmd_tui", fake_tui)
+    assert main.cli([]) == 0
+    assert len(calls) == 1
+    assert calls[0].parallel == 1
+
+
+def test_tui_parallel_flag_reaches_cmd_tui(monkeypatch) -> None:
+    calls: list[object] = []
+
+    def fake_tui(args: argparse.Namespace) -> int:
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(main, "cmd_tui", fake_tui)
+    with pytest.raises(SystemExit) as exc:
+        main.cli(["tui", "-p", "3"])
+    assert exc.value.code == 0
+    assert calls[0].parallel == 3
 
 
 def test_usage_cli_single_session(monkeypatch, tmp_path, capsys) -> None:
