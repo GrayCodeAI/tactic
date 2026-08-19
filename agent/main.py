@@ -170,7 +170,9 @@ def cmd_lean_baseline(args: argparse.Namespace) -> int:
 def cmd_lean_synth(args: argparse.Namespace) -> int:
     from .synth_lean import main as synth_main
 
-    return synth_main(["--report", args.report, "--out", args.out])
+    extra = ["--templates"] if args.templates else []
+    return synth_main(["--report", args.report, "--out", args.out,
+                       "--timeout", str(args.timeout), *extra])
 
 
 def cmd_tui(args: argparse.Namespace) -> int:
@@ -405,9 +407,14 @@ def cli() -> None:
     lbn.set_defaults(fn=cmd_lean_baseline)
 
     sl = sub.add_parser("synth-lean",
-                        help="write a Lean-proved corpus JSONL from a baseline report")
+                        help="write a Lean-proved corpus JSONL (from a baseline "
+                             "report or from verified templates)")
     sl.add_argument("--report", default="benchmark/lean_baseline.json")
     sl.add_argument("--out", default="corpus/lean_proved.jsonl")
+    sl.add_argument("--templates", action="store_true",
+                    help="compile template statements with the hammer chain "
+                         "and keep only the ones Lean proves")
+    sl.add_argument("--timeout", type=int, default=120)
     sl.set_defaults(fn=cmd_lean_synth)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
