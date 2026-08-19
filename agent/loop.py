@@ -158,6 +158,28 @@ def _extract_body(text: str) -> str:
     return "\n".join(out)
 
 
+def _proof_body(proof_text: str, cap: int = 300) -> str:
+    """Bounded, indented proof body from a corpus entry's stored text.
+
+    The stored field may be a tactic tag (`prover_search`), a full file, or
+    a raw `by` block. Only real bodies are returned; tags and empty inputs
+    yield ''. Used to render worked examples inside the prompt (P1-3), so the
+    cap keeps the budget for prefill on slow endpoints under control.
+    """
+    t = proof_text.strip()
+    if not t or t in ("prover_finish", "prover_search"):
+        return ""
+    if "prover_finish" in t or "prover_search" in t:
+        return ""
+    m = re.search(r":=\s*by\b", t)
+    body = t[m.end():] if m else t
+    lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    out = "\n".join("  " + ln for ln in lines)
+    return out if len(out) <= cap else ""
+
+
 def _extract_full_file(text: str, signature: str) -> str | None:
     """Extract a complete Lean file, enforcing our canonical theorem statement.
 
@@ -470,15 +492,36 @@ def prove(
         except Exception:  # noqa: BLE001 — retrieval is best-effort
             hits = []
         if hits:
+            # Corpus hits with a real proof body (LLM-verified tactics) are
+            # worth showing as worked examples — that's the cheapest way to
+            # teach the lemma/tactic style. Native-tag hits stay one-liners.
+            examples: list[str] = []
+            for h in hits:
+                if h.get("file") != "corpus" or not h.get("proof"):
+                    continue
+                if h["proof"].strip() in ("prover_finish", "prover_search"):
+                    continue
+                body = _proof_body(h["proof"])
+                if body:
+                    examples.append(f"{h['signature']} := by\n{body}")
+                if len(examples) >= 2:
+                    break
+            ex_block = ""
+            if examples:
+                ex_block = ("Worked examples of proofs this project has already "
+                            "verified (Lean-checked — imitate the style/lemmas):\n"
+                            + "\n\n".join(examples) + "\n\n")
             retrieval_hints = (
                 "Relevant lemmas found by local keyword search "
                 "(name : signature):\n"
                 + "\n".join(
                     f"- {h['name']} : {h['signature']}"
-                    + (f" — proven by {h['proof']}" if h.get("proof") else "")
+                    + (f" — proven by {h['proof'].splitlines()[0].strip()}"
+                       if h.get("proof") and h["proof"].strip() in
+                       ("prover_finish", "prover_search") else "")
                     for h in hits
                 )
-                + "\n\n"
+                + "\n\n" + ex_block
             )
             emit("retrieve", k=len(hits),
                  lemmas=[h["name"] for h in hits],

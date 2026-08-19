@@ -462,8 +462,42 @@ def test_retrieval_corpus_hit_shows_proof(hermetic, monkeypatch) -> None:
     _retrieval_chat(monkeypatch, captured)
     r = loop.prove(STATEMENT, max_steps=1, verbose=False,
                    problem_id="retrieve-corpus", goal_feedback=False,
-                   record_session=False)
+                     record_session=False)
     assert "proven by prover_finish" in captured[0]
+    retrieve = next(e for e in r.trace if e["event"] == "retrieve")
+    assert retrieve["corpus"] == 1
+
+
+def test_proof_body_extract_and_cap() -> None:
+    assert loop._proof_body("prover_search") == ""
+    assert loop._proof_body("") == ""
+    body = loop._proof_body("theorem t : True := by trivial")
+    assert body == "  trivial"
+    body = loop._proof_body("by\n  refine ⟨?_, ?_⟩\n  · simp")
+    assert "refine ⟨?_, ?_⟩" in body and all(ln.startswith("  ") for ln in body.splitlines())
+    long_body = "by\n" + "\n".join(f"  have h{i} : True := trivial" for i in range(40))
+    assert loop._proof_body(long_body) == ""  # exceeds 300-char cap
+
+
+def test_retrieval_worked_example_injected(hermetic, monkeypatch) -> None:
+    """LLM-verified corpus entry → worked example with real tactics in prompt."""
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.setenv("PROVER_RETRIEVE", "1")
+    monkeypatch.setattr(
+        "agent.retrieval.search_lemmas",
+        lambda *a, **k: [{
+            "name": "auto_parity_abclx",
+            "signature": "theorem parity (n : ℕ) : 2 ∣ n * (n + 1)",
+            "file": "corpus",
+            "proof": "by\n  have h : n % 2 = 0 ∨ n % 2 = 1 := by omega\n  rcases h with (h | h)\n  · refine ⟨n / 2 * (n + 1), ?_⟩\n    omega",
+        }])
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="retrieve-example", goal_feedback=False,
+                   record_session=False)
+    assert "Worked examples" in captured[0]
+    assert "rcases h with (h | h)" in captured[0]
     retrieve = next(e for e in r.trace if e["event"] == "retrieve")
     assert retrieve["corpus"] == 1
 

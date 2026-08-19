@@ -106,8 +106,20 @@ Honest numbers so far (100-problem benchmark, real Lean, no LLM):
 - `prover synth-lean` writes the Lean-proved corpus JSONL from either
   report (`corpus/lean_proved.jsonl`, 44 or 56 entries).
 - MiniF2F valid (244 problems): `prover_finish` solves **61/244 (25%)**
-  in 2783 s — the mathd_algebra/numbertheory and simple AMC/AIME tier.
-  `prover_search` run in progress (`benchmark/lean_baseline_minif2f_search.json`).
+  in 2783 s; `prover_search` solves **74/244 (30%)** in 12564 s —
+  13 new solves (all the induction divisibility problems, plus
+  mathd_algebra block), zero regressions. Mathd alone: 59/130.
+  Report: `benchmark/lean_baseline_minif2f_search.json`.
+- LLM tier smoke (after endpoint/per-phase-timeout fixes on the client):
+  7/10 on a mixed set — 6 via native pre-pass, `sumsq` (induction over
+  `Finset.range` sum) via the full repair loop with Qwen/Qwen3.8-27B.
+  Currently endpoint-speed-bound (~1 tok/s serverless), not
+  architecture-bound.
+- Corpus is now self-growing: every proven proof (native or LLM) is
+  appended to `corpus/lean_proved.jsonl` by the loop (dedup by id,
+  `PROVER_CORPUS_GROW=0` to opt out). `PROVER_RETRIEVE=1` additionally
+  injects "worked example" blocks of LLM-verified corpus tactics (≤2, ≤300
+  chars each) into the prompt.
 - Corpus (L5): `prover synth-lean --templates` compiles 42 mathlib-flavored
   statements with the hammer chain and keeps only Lean-proven ones (41/42;
   the one rejection, `n - m + m = n`, is false for `m > n`). Merged corpus:
