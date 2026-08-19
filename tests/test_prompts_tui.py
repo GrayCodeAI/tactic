@@ -49,8 +49,10 @@ def test_unknown_command_without_template_notifies(tmp_path: Path, monkeypatch) 
     async def scenario() -> None:
         app = ProverApp()
         async with app.run_test(size=(140, 40)) as pilot:
-            app.query_one("#prompt").value = "/nonexistent hi"
-            app.query_one("#prompt").action_submit()
+            prompt = app.query_one("#prompt")
+            prompt.focus()
+            prompt.value = "/nonexistent hi"
+            await pilot.press("enter")
             await pilot.pause()
             app.exit()
 
