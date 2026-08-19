@@ -463,3 +463,162 @@ def test_lemma_plan_off_by_default(hermetic, monkeypatch) -> None:
                    record_session=False)
     assert "plan" not in [e["event"] for e in r.trace]
     assert "prover_plan_" not in captured[0]
+
+
+# --------------------------------------------------------------- full-file mode
+
+SIG = "theorem prover_full (a b : ℕ) : a + b = b + a := by"
+
+
+def test_extract_full_file_keeps_helpers_and_enforces_signature() -> None:
+    reply = """```lean
+import Mathlib
+
+lemma helper (a : ℕ) : a + 0 = a := by
+  omega
+
+theorem prover_full (a b : ℕ) : a + b = b + a := by
+  rw [add_comm]
+```"""
+    out = loop._extract_full_file(reply, SIG)
+    assert out is not None
+    assert "import Mathlib" not in out  # header owns the import
+    assert "lemma helper (a : ℕ) : a + 0 = a := by" in out
+    assert "theorem prover_full (a b : ℕ) : a + b = b + a := by" in out
+    assert "  rw [add_comm]" in out
+    # the canonical signature replaced the model's declaration (same here),
+    # and the model's own decl text is not duplicated
+    assert out.count("theorem prover_full") == 1
+
+
+def test_extract_full_file_returns_none_when_theorem_missing() -> None:
+    reply = """```lean
+import Mathlib
+
+lemma helper (a : ℕ) : a = a := by
+  rfl
+```"""
+    assert loop._extract_full_file(reply, SIG) is None
+    assert loop._extract_full_file("no code block here", SIG) is None
+
+
+def test_extract_full_file_replaces_changed_statement() -> None:
+    """The model's altered statement must be overwritten by ours."""
+    reply = """```lean
+theorem prover_full (a b : ℕ) : a + b = b := by
+  omega
+```"""
+    out = loop._extract_full_file(reply, SIG)
+    assert out is not None
+    assert "theorem prover_full (a b : ℕ) : a + b = b + a := by" in out
+    assert "a + b = b := by" not in out
+    assert "  omega" in out
+
+
+def _chat_with(monkeypatch, responses: list[str]) -> None:
+    state = {"n": 0}
+
+    def chat(system, messages, temperature=0.2, retries=4, model_name=None):
+        i = min(state["n"], len(responses) - 1)
+        state["n"] += 1
+        return llm.LLMResponse(content=responses[i], prompt_tokens=10,
+                               completion_tokens=5, total_tokens=15)
+
+    monkeypatch.setattr(loop.llm, "chat", chat)
+
+
+def test_full_file_mode_proves_with_helpers(hermetic, monkeypatch) -> None:
+    """Full-file mode: model's whole file is used and the loop proves."""
+    state = {"calls": 0}
+
+    def check(_f, _d):
+        state["calls"] += 1
+        return (True, "") if state["calls"] >= 2 else (False, "fake.lean:1:1: error: goals remain\n")
+
+    monkeypatch.setattr(loop.lean, "check_file", check)
+    full_reply = """```lean
+lemma helper (a : ℕ) : a + 0 = a := by
+  omega
+
+theorem prover_full (a b : ℕ) : a + b = b + a := by
+  rw [add_comm]
+```"""
+    _chat_with(monkeypatch, [full_reply])
+    stmt = "theorem prover_full (a b : ℕ) : a + b = b + a := by sorry"
+    r = loop.prove(stmt, max_steps=5, verbose=False, problem_id="full",
+                   goal_feedback=False, record_session=False,
+                   skip_hammers=True, full_file=True)
+    assert r.proved
+    assert r.steps == 2
+    text = (hermetic / "tmp" / "Prover_full.lean").read_text()
+    assert "lemma helper (a : ℕ) : a + 0 = a := by" in text
+    assert "theorem prover_full (a b : ℕ) : a + b = b + a := by" in text
+    assert "  rw [add_comm]" in text
+
+
+def test_full_file_reject_fed_back_then_proves(hermetic, monkeypatch) -> None:
+    """A reply without the target theorem is rejected and the note is fed back."""
+    state = {"calls": 0}
+
+    def check(_f, _d):
+        state["calls"] += 1
+        return (True, "") if state["calls"] >= 3 else (False, "fake.lean:1:1: error: goals remain\n")
+
+    monkeypatch.setattr(loop.lean, "check_file", check)
+    user_msgs: list[str] = []
+
+    def chat(system, messages, temperature=0.2, retries=4, model_name=None):
+        user_msgs.append(messages[-1]["content"])
+        idx = len(user_msgs) - 1
+        if idx == 0:
+            return llm.LLMResponse(content="```lean\nlemma helper (a : ℕ) : a = a := by rfl\n```",
+                                   prompt_tokens=1, completion_tokens=1, total_tokens=2)
+        return llm.LLMResponse(content="```lean\ntheorem prover_full (a b : ℕ) : a + b = b + a := by\n  rw [add_comm]\n```",
+                               prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+    monkeypatch.setattr(loop.llm, "chat", chat)
+    stmt = "theorem prover_full (a b : ℕ) : a + b = b + a := by sorry"
+    r = loop.prove(stmt, max_steps=5, verbose=False, problem_id="full2",
+                   goal_feedback=False, record_session=False,
+                   skip_hammers=True, full_file=True)
+    assert r.proved
+    assert "was not accepted" in user_msgs[1]
+    assert "`theorem prover_full`" in user_msgs[1]
+
+
+# ------------------------------------------------------------------ adaptive
+
+def test_adaptive_steps_extends_on_progress(hermetic, monkeypatch) -> None:
+    """Progress (fewer diagnostics) near the budget extends it."""
+    state = {"n": 0}
+
+    def check(_f, _d):
+        state["n"] += 1
+        return (False, "fake.lean:1:1: error: goals remain\n" * max(1, 5 - state["n"]))
+
+    monkeypatch.setattr(loop.lean, "check_file", check)
+    _chat_with(monkeypatch, ["```lean\n  simp\n```"] * 30)
+    r = loop.prove(STATEMENT, max_steps=4, verbose=False,
+                   problem_id="adaptive", goal_feedback=False,
+                   record_session=False, skip_hammers=True, adaptive_steps=True)
+    assert not r.proved
+    events = [e["event"] for e in r.trace]
+    assert "extend" in events
+    ext = next(e for e in r.trace if e["event"] == "extend")
+    assert ext["from_steps"] == 4 and ext["to_steps"] == 6
+    assert r.steps >= 6
+
+
+def test_adaptive_steps_no_extend_without_progress(hermetic, monkeypatch) -> None:
+    """No progress → budget stays put."""
+    def check(_f, _d):
+        return (False, "fake.lean:1:1: error: goals remain\n")
+
+    monkeypatch.setattr(loop.lean, "check_file", check)
+    _chat_with(monkeypatch, ["```lean\n  simp\n```"] * 20)
+    r = loop.prove(STATEMENT, max_steps=4, verbose=False,
+                   problem_id="adaptive2", goal_feedback=False,
+                   record_session=False, skip_hammers=True, adaptive_steps=True)
+    assert not r.proved
+    assert "extend" not in [e["event"] for e in r.trace]
+    assert r.steps == 4

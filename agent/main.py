@@ -17,11 +17,6 @@ from .loop import prove, prove_best_of
 def cmd_prove(args: argparse.Namespace) -> int:
     from .rendering import create_event_renderer
 
-    def run(prove_fn):
-        return prove_fn(args.statement, max_steps=args.max_steps,
-                        goal_feedback=not args.no_goal_feedback,
-                        record_session=not args.no_record)
-
     mode = args.output
     if mode in ("json", "transcript"):
         # Stream output through a renderer instead of the default text summary.
@@ -38,10 +33,14 @@ def cmd_prove(args: argparse.Namespace) -> int:
         r = prove_best_of(args.statement, n_attempts=args.n_attempts,
                           max_steps=args.max_steps,
                           goal_feedback=not args.no_goal_feedback,
-                          record_session=not args.no_record)
+                          record_session=not args.no_record,
+                          full_file=args.full_file, adaptive_steps=args.adaptive)
         print(f"best-of-{len(r.attempts)}: proved={r.proved} attempts={len(r.attempts)}")
     else:
-        r = run(prove)
+        r = prove(args.statement, max_steps=args.max_steps,
+                  goal_feedback=not args.no_goal_feedback,
+                  record_session=not args.no_record,
+                  full_file=args.full_file, adaptive_steps=args.adaptive)
     print(f"\nproved={r.proved} steps={r.steps} time={r.seconds:.1f}s")
     print(f"tokens: {r.total_tokens} (prompt={r.total_prompt_tokens}, completion={r.total_completion_tokens}) cost≈${r.estimated_cost_usd:.6f}")
     if r.session_path:
@@ -53,13 +52,15 @@ def cmd_prove(args: argparse.Namespace) -> int:
 
 def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: bool = True,
                record_session: bool = True, skip_hammers: bool = False,
-               n_attempts: int = 1) -> tuple[dict, int, float]:
+               n_attempts: int = 1, full_file: bool = False,
+               adaptive_steps: bool = False) -> tuple[dict, int, float]:
     """Prove a single problem. Returns (result_dict, tokens, cost)."""
     print(f"[{idx}/{total}] {p['id']}: {p['statement'][:70]}...")
     r = prove_best_of(p["statement"], n_attempts=n_attempts, max_steps=max_steps,
                       verbose=False, problem_id=p["id"],
                       goal_feedback=goal_feedback, record_session=record_session,
-                      skip_hammers=skip_hammers, difficulty=p.get("difficulty"))
+                      skip_hammers=skip_hammers, difficulty=p.get("difficulty"),
+                      full_file=full_file, adaptive_steps=adaptive_steps)
     result = {
         "id": p["id"],
         "proved": r.proved,
@@ -95,7 +96,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
             futures = [
                 executor.submit(_prove_one, p, args.max_steps, i, len(problems),
-                                goal_feedback, args.record, args.no_hammers, args.n_attempts)
+                                goal_feedback, args.record, args.no_hammers, args.n_attempts,
+                                args.full_file, args.adaptive)
                 for i, p in enumerate(problems, start + 1)
             ]
             for fut in concurrent.futures.as_completed(futures):
@@ -107,7 +109,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
         for i, p in enumerate(problems, start + 1):
             result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems),
                                               goal_feedback, args.record, args.no_hammers,
-                                              args.n_attempts)
+                                              args.n_attempts, args.full_file, args.adaptive)
             results.append(result)
             total_tokens += tokens
             total_cost += cost
@@ -323,6 +325,11 @@ def cli() -> None:
     p.add_argument("--max-steps", type=int, default=20)
     p.add_argument("--n-attempts", type=int, default=1,
                    help="best-of-N: run up to N independent attempts (temperature ramp)")
+    p.add_argument("--full-file", action="store_true",
+                   help="let the model write the whole Lean file (helpers/imports); "
+                        "the theorem statement is still enforced")
+    p.add_argument("--adaptive", action="store_true",
+                   help="extend the step budget when the last step made progress")
     p.add_argument("--no-goal-feedback", action="store_true",
                    help="disable LSP goal-state feedback")
     p.add_argument("--no-record", action="store_true",
@@ -343,6 +350,10 @@ def cli() -> None:
                    help="skip the hammer pre-pass (for retries of known failures)")
     b.add_argument("--n-attempts", type=int, default=1,
                    help="best-of-N: up to N independent attempts per problem")
+    b.add_argument("--full-file", action="store_true",
+                   help="let the model write whole files (helpers/imports) per problem")
+    b.add_argument("--adaptive", action="store_true",
+                   help="extend the step budget when the last step made progress")
     b.add_argument("--no-record", action="store_false", dest="record",
                    help="disable JSONL session recording")
     b.set_defaults(fn=cmd_bench, record=True)

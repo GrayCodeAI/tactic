@@ -64,6 +64,23 @@ indented two spaces, in a single ```lean code block. Rules:
 - No `sorry`. The proof must fully type-check.
 - If diagnostics are shown, fix exactly those errors."""
 
+# Full-file mode (--full-file): the model owns the whole file — imports,
+# helper lemmas, definitions — and must prove the given theorem. The repair
+# loop still enforces the canonical statement (see _extract_full_file).
+SYSTEM_FULL = """You are an expert Lean 4 / Mathlib developer.
+You are given a theorem SIGNATURE that MUST be proven, and the compiler
+diagnostics from `lake build` of your previous file.
+Respond with ONE complete ```lean code block containing an entire self-
+contained Lean file that proves the theorem. Rules:
+- The file MUST declare `theorem prover_<id>` with EXACTLY the given
+  signature and prove it (no `sorry`).
+- You may add any helper lemmas, definitions, `section`, `open`, or
+  `import` lines you need ABOVE the theorem to make the proof work.
+- Do NOT change the theorem's statement or binders in any way.
+- Use only core Lean 4 / Mathlib definitions.
+- If diagnostics are shown, fix exactly those errors in the file.
+- Output the whole file every time (not a diff)."""
+
 
 @dataclass
 class Result:
@@ -138,6 +155,39 @@ def _extract_body(text: str) -> str:
     return "\n".join(out)
 
 
+def _extract_full_file(text: str, signature: str) -> str | None:
+    """Extract a complete Lean file, enforcing our canonical theorem statement.
+
+    The model writes a whole file (helpers, definitions, proof). We splice our
+    canonical `signature` in place of whatever the model wrote for the target
+    theorem's declaration (keeping the model's tactic body), so the model can
+    add any supporting code but can never silently change the statement.
+
+    Returns None when the reply has no code block or the target theorem is
+    missing/renamed — the loop then tells the model what to fix.
+
+    `import` lines are stripped: our header already imports Mathlib, and Lean
+    rejects an `import` once any other command (e.g. our `open`) has run.
+    """
+    code = llm.extract_lean_code(text)
+    if not code.strip():
+        return None
+    code = "\n".join(
+        ln for ln in code.splitlines() if not ln.lstrip().startswith("import ")
+    )
+    m = re.search(r"theorem\s+([A-Za-z0-9_'.]+)", signature)
+    if not m:
+        return code
+    name = m.group(1)
+    decl = re.compile(rf"(?ms)^theorem\s+{re.escape(name)}\b.*?:=\s*by\b")
+    mm = decl.search(code)
+    if not mm:
+        return None
+    # keep anything before the decl (helpers/opens) and after `:= by` (the
+    # model's tactic body); the declaration itself is replaced by ours.
+    return code[: mm.start()] + signature + code[mm.end():]
+
+
 def prove(
     statement: str,
     max_steps: int = 20,
@@ -155,6 +205,8 @@ def prove(
     difficulty: str | None = None,
     model_name: str | None = None,
     lemma_plan: bool | None = None,
+    full_file: bool = False,
+    adaptive_steps: bool = False,
 ) -> Result:
     t0 = time.time()
     signature = _split_signature(statement)
@@ -216,8 +268,16 @@ def prove(
         os.getenv("PROVER_LEMMA_PLAN") == "1"
     )
 
+    # Full-file mode: the model owns the whole file; `content` is the text
+    # after HEADER+lemma_bank (starts with our canonical signature).
+    content = signature + "\n  sorry"
+    system_prompt = SYSTEM_FULL if full_file else SYSTEM
+    extract_note = ""  # fed back to the model when a reply can't be used
+
     def write_file(b: str) -> None:
-        target_file.write_text(HEADER + lemma_bank + signature + "\n" + b + "\n")
+        nonlocal content
+        content = b
+        target_file.write_text(HEADER + lemma_bank + b + "\n")
 
     def check_file() -> tuple[bool, str]:
         """Run `lean --check` on the target file for fast, isolated verification."""
@@ -226,7 +286,7 @@ def prove(
     # LSP session for goal-state feedback (lazily started, may stay None).
     lsp_client: lsp.LeanLSP | None = None
 
-    def get_goals(current_text: str) -> str | None:
+    def get_goals() -> str | None:
         """Open goal state via LSP. Returns formatted goals or None."""
         nonlocal lsp_client
         if not goal_feedback:
@@ -234,6 +294,7 @@ def prove(
         if lsp_client is None:
             lsp_client = lsp.LeanLSP(LEAN_DIR, target_file)
         try:
+            current_text = HEADER + lemma_bank + content
             lsp_client.update(current_text)
             goals = lsp_client.goal_at_end(current_text)
             return goals
@@ -283,8 +344,9 @@ def prove(
 
     # ---- Resume/branch: seed the repair history from a recorded session
     # (tau: replay the root→leaf path to rebuild harness messages).
+    # Full-file mode is a structural rewrite; resume seeding is body-mode only.
     body = None  # initial proof body; seeded on resume
-    if resume_from:
+    if resume_from and not full_file:
         records = []
         for rec in manager.list_sessions():
             if rec.id == resume_from:
@@ -327,7 +389,7 @@ def prove(
         for i, hammer in enumerate(HAMMERS, 1):
             if stop_requested():
                 break
-            write_file(f"  {hammer}")
+            write_file(signature + "\n  " + hammer)
             ok, output = check_file()
             emit("hammer", i=i, total=len(HAMMERS), tactic=hammer, ok=ok,
                  output="" if ok else output[-500:])
@@ -335,14 +397,19 @@ def prove(
                 return finish(True, i, target_file.read_text(), 0.0)
         emit("llm_start")
         body = "  sorry"  # placeholder so the first build reports sorry
-    if body is None:
-        body = "  sorry"  # hammers skipped and no resume seed: start from sorry
-    write_file(body)
+    if body is not None:
+        write_file(signature + "\n" + body)
+    elif not full_file:
+        body = "  sorry"
+        write_file(signature + "\n  sorry")
+    else:
+        write_file(content)  # full-file, no resume seed: initial `sorry` file
 
     # ---- Lemma planning: prove helper lemmas first, prepend proven ones
     # (PROVER_LEMMA_PLAN=1). Skipped on resume (the prior run already had its
-    # chance). Only *proven* lemmas enter the file — never `sorry`.
-    if plan_enabled and not resume_from:
+    # chance) and in full-file mode (the model writes helpers itself).
+    # Only *proven* lemmas enter the file — never `sorry`.
+    if plan_enabled and not resume_from and not full_file:
         try:
             from .plan import propose_lemmas, prove_lemmas
 
@@ -376,7 +443,12 @@ def prove(
             )
             emit("retrieve", k=len(hits), lemmas=[h["name"] for h in hits])
 
-    for step in range(1, max_steps + 1):
+    base_max_steps = max_steps
+    extensions = 0
+    prev_progress = (10**9, 10**9)  # (ndiag, ngoals) of the previous step
+    step = 0
+    while step < max_steps:
+        step += 1
         if stop_requested():
             return finish(False, step - 1, "", llm.estimate_cost(total_prompt, total_completion), stopped=True)
         ok, output = check_file()
@@ -391,7 +463,8 @@ def prove(
         emit("build", step=step, ok=False, diagnostics=ndiag,
              summary=(diags[0].message if diags else "sorry / not proved"),
              report=report[:4000])
-        goals = get_goals(HEADER + lemma_bank + signature + "\n" + body + "\n")
+        goals = get_goals()
+        ngoals = goals.count("⊢") if goals else 0
         if goals:
             emit("goals", step=step, goals=goals)
 
@@ -404,17 +477,25 @@ def prove(
                 f"rw/exact/simpa): {', '.join(names)}\n\n"
             )
 
+        write_what = (
+            "Write ONLY the tactic proof body."
+            if not full_file else
+            "Write the COMPLETE Lean file (helpers + imports allowed) proving "
+            "the theorem with exactly the given signature."
+        )
         user_msg = (
             f"Theorem signature:\n{signature}\n\n"
             + lemma_hints
             + retrieval_hints
             + f"Compiler diagnostics:\n{report}\n\n"
             + (f"Open goals at the end of your last proof attempt:\n{goals}\n\n" if goals else "")
-            + "Write ONLY the tactic proof body."
+            + (extract_note + "\n\n" if extract_note else "")
+            + write_what
         )
+        extract_note = ""  # consumed
         history.append({"role": "user", "content": user_msg})
         emit("llm_request", step=step)
-        resp = llm.chat(SYSTEM, history, temperature=temperature, model_name=active_model)
+        resp = llm.chat(system_prompt, history, temperature=temperature, model_name=active_model)
         if resp.content.startswith("[LLM error"):
             emit("llm_error", step=step, error=resp.content)
             diag.log_llm_error(
@@ -422,17 +503,40 @@ def prove(
             )
             history.append({"role": "assistant", "content": "(no response)"})
             continue
-        new_body = _extract_body(resp.content)
-        if new_body:
-            body = new_body
-            write_file(body)
+        if full_file:
+            new_content = _extract_full_file(resp.content, signature)
+            if new_content is None:
+                name = re.search(r"theorem\s+([A-Za-z0-9_'.]+)", signature).group(1)
+                extract_note = (
+                    "Your reply was not accepted: it must contain a single "
+                    f"```lean block that declares `theorem {name}` with the "
+                    "given signature (write the whole file, do not rename it)."
+                )
+                emit("llm_response", step=step, accepted=False,
+                     prompt_tokens=resp.prompt_tokens,
+                     completion_tokens=resp.completion_tokens,
+                     tokens=resp.total_tokens, body="")
+                history.append({"role": "assistant", "content": resp.content})
+                total_prompt += resp.prompt_tokens
+                total_completion += resp.completion_tokens
+                total_tokens += resp.total_tokens
+                continue
+            write_file(new_content)
             history.append({"role": "assistant", "content": resp.content})
+        else:
+            new_body = _extract_body(resp.content)
+            if new_body:
+                body = new_body
+                write_file(signature + "\n" + body)
+                history.append({"role": "assistant", "content": resp.content})
         total_prompt += resp.prompt_tokens
         total_completion += resp.completion_tokens
         total_tokens += resp.total_tokens
-        emit("llm_response", step=step, prompt_tokens=resp.prompt_tokens,
+        emit("llm_response", step=step, accepted=True,
+             prompt_tokens=resp.prompt_tokens,
              completion_tokens=resp.completion_tokens,
-             tokens=resp.total_tokens, body=new_body)
+             tokens=resp.total_tokens,
+             body=(new_content if full_file else new_body))
         # Compaction beats truncation: fold old dead-end turns into a
         # summary so the model stops re-trying them (tau's memory model).
         n_msgs = len(history)
@@ -441,10 +545,28 @@ def prove(
         # threshold (70% of the model's context window) without the turn
         # count having triggered yet, compact eagerly.
         threshold = auto_compaction_threshold_for_context_window(llm.context_window_tokens())
-        if summary is None and threshold and estimate_context_tokens(SYSTEM, history) >= threshold:
+        if summary is None and threshold and estimate_context_tokens(system_prompt, history) >= threshold:
             history, summary = compact_history(history, keep_turns=8, compact_at_turns=14)
         if summary:
             emit("compaction", dropped=n_msgs - len(history))
+
+        # ---- Adaptive budget: if we just ran out of steps while making real
+        # progress, extend the budget (bounded: ≤2 extensions, ≤4× original).
+        progress = (ndiag, ngoals)
+        improving = progress < prev_progress
+        prev_progress = progress
+        if (
+            adaptive_steps
+            and step == max_steps
+            and extensions < 2
+            and max_steps < base_max_steps * 4
+            and improving
+        ):
+            old = max_steps
+            max_steps = int(max_steps * 1.5)
+            extensions += 1
+            emit("extend", from_steps=old, to_steps=max_steps,
+                 reason=f"progress on step {step} (diags {ndiag}, goals {ngoals})")
 
     return finish(False, max_steps, "", llm.estimate_cost(total_prompt, total_completion))
 
@@ -465,6 +587,8 @@ def prove_best_of(
     difficulty: str | None = None,
     model_name: str | None = None,
     lemma_plan: bool | None = None,
+    full_file: bool = False,
+    adaptive_steps: bool = False,
 ) -> Result:
     """Best-of-N search: run up to N independent repair trajectories.
 
@@ -493,6 +617,8 @@ def prove_best_of(
             difficulty=difficulty,
             model_name=model_name,
             lemma_plan=lemma_plan,
+            full_file=full_file,
+            adaptive_steps=adaptive_steps,
         )
         results.append(r)
         if r.proved:
