@@ -190,6 +190,15 @@ def cmd_lean_synth(args: argparse.Namespace) -> int:
                        "--timeout", str(args.timeout), *extra])
 
 
+def cmd_datagen(args: argparse.Namespace) -> int:
+    from .datagen import main as datagen_main
+
+    argv = ["--corpus", args.corpus, "--out", args.out]
+    for r in args.report:
+        argv += ["--report", r]
+    return datagen_main(argv)
+
+
 def cmd_tui(args: argparse.Namespace) -> int:
     try:
         from .tui import main as tui_main
@@ -434,6 +443,14 @@ def cli(argv: list[str] | None = None) -> None:
                          "and keep only the ones Lean proves")
     sl.add_argument("--timeout", type=int, default=120)
     sl.set_defaults(fn=cmd_lean_synth)
+
+    dg = sub.add_parser("datagen",
+                        help="emit SFT/RL training JSONL from the Lean-verified "
+                             "corpus + baseline reports (expert data, no model)")
+    dg.add_argument("--corpus", default="corpus/lean_proved.jsonl")
+    dg.add_argument("--report", action="append", default=[])
+    dg.add_argument("--out", default="benchmark/train_sft.jsonl")
+    dg.set_defaults(fn=cmd_datagen)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
     t.add_argument("-p", "--parallel", type=int, default=1,
