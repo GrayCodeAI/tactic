@@ -122,6 +122,44 @@ def test_native_hammer_failure_goes_to_llm(hermetic, monkeypatch) -> None:
     assert hammers[0]["ok"] is False
 
 
+def test_prover_search_prepass_closes_without_llm(hermetic, monkeypatch) -> None:
+    """PROVER_SEARCH=1 upgrades the pre-pass to `prover_search`; when it
+    closes the goal, no LLM tokens are spent and the file carries the
+    search heartbeat option."""
+    install_check(monkeypatch, ok_on={1})
+    chat_state = install_chat(monkeypatch, ["```lean\n  ring\n```"])
+    monkeypatch.setenv("PROVER_SEARCH", "1")
+    r = loop.prove(STATEMENT, max_steps=5, verbose=False,
+                   problem_id="search-solve", goal_feedback=False,
+                   record_session=False)
+    assert r.proved
+    assert r.steps == 1
+    assert chat_state["calls"] == 0
+    hammers = [e for e in r.trace if e["event"] == "hammer"]
+    assert hammers[0]["tactic"] == "prover_search"
+    assert hammers[0]["ok"] is True
+    assert "prover_search" in r.proof
+    file_text = (hermetic / "tmp" / "Prover_search-solve.lean").read_text()
+    assert "set_option maxHeartbeats 0" in file_text
+    assert "prover_search" in file_text
+
+
+def test_prover_search_prepass_failure_goes_to_llm(hermetic, monkeypatch) -> None:
+    """When `prover_search` fails, the loop proceeds to the LLM exactly as
+    with `prover_finish`."""
+    install_check(monkeypatch, ok_on=None)
+    chat_state = install_chat(monkeypatch, ["```lean\n  ring\n```"])
+    monkeypatch.setenv("PROVER_SEARCH", "1")
+    r = loop.prove(STATEMENT, max_steps=2, verbose=False,
+                   problem_id="search-fail", goal_feedback=False,
+                   record_session=False)
+    assert chat_state["calls"] == 2
+    hammers = [e for e in r.trace if e["event"] == "hammer"]
+    assert len(hammers) == 1
+    assert hammers[0]["tactic"] == "prover_search"
+    assert hammers[0]["ok"] is False
+
+
 # --------------------------------------------------------------- LLM repairs
 
 def test_llm_repairs_until_build_passes(hermetic, monkeypatch) -> None:

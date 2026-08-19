@@ -52,6 +52,7 @@ export PROVER_MODEL=gpt-4o
 | `PROVER_LLM_TIMEOUT` | `180` | Hard wall-clock cap (seconds) per LLM call. |
 | `PROVER_RETRIEVE` | unset | `1` enables local Mathlib lemma retrieval hints (keyword index over the pinned mathlib checkout, built lazily in `lean/tmp/lemma_index.json`). |
 | `PROVER_LEMMA_PLAN` | unset | `1` enables lemma-bank planning: propose ≤3 helper lemmas, prove them first, prepend only *proven* ones above the main theorem. |
+| `PROVER_SEARCH` | unset | `1` upgrades the hammer pre-pass to `prover_search` (the bounded native search tactic: case split / induction / subst / witness search over the hammer chain). Slower, but solves more problems with zero LLM tokens. |
 | `PROVER_MODEL_<TIER>` | `PROVER_MODEL` | Per-difficulty model override (`<TIER>` = `TRIVIAL`/`EASY`/`MEDIUM`/`HARD`). |
 | `PROVER_TEMP_<TIER>` | caller default | Per-difficulty sampling temperature (float). |
 | `PROVER_STEPS_<TIER>` | caller default | Per-difficulty max repair steps (int). |

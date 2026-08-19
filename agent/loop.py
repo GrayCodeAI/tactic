@@ -390,20 +390,25 @@ def prove(
     # hammer chain natively (Lean-side), instead of spawning one `lake env
     # lean` per hammer. If the ProverSupport olean isn't built (fresh clone,
     # "unknown module prefix"), fall back to the per-hammer Python loop.
+    # PROVER_SEARCH=1 upgrades the pre-pass to `prover_search` (bounded
+    # native search, which includes the hammer chain) — opt-in, slower, but
+    # solves more problems without any LLM tokens.
     # Skipped on resume and when the caller knows hammers already failed.
     if body is None and not skip_hammers:
-        write_file(signature + "\n  prover_finish")
+        prepass = "prover_search" if os.environ.get("PROVER_SEARCH") else "prover_finish"
+        prepass_opts = "set_option maxHeartbeats 0\n" if prepass == "prover_search" else ""
+        write_file(prepass_opts + signature + "\n  " + prepass)
         ok, output = check_file()
         if ok:
-            emit("hammer", i=1, total=1, tactic="prover_finish", ok=True, output="")
+            emit("hammer", i=1, total=1, tactic=prepass, ok=True, output="")
             return finish(True, 1, target_file.read_text(), 0.0)
         if "unknown module prefix 'ProverSupport'" not in output:
             # native chain ran and failed — every hammer failed
-            emit("hammer", i=1, total=1, tactic="prover_finish", ok=False,
+            emit("hammer", i=1, total=1, tactic=prepass, ok=False,
                  output=output[-500:])
         else:
             # ProverSupport not built: per-hammer fallback loop
-            emit("hammer", i=1, total=len(HAMMERS) + 1, tactic="prover_finish",
+            emit("hammer", i=1, total=len(HAMMERS) + 1, tactic=prepass,
                  ok=False, output=output[-500:])
             for i, hammer in enumerate(HAMMERS, 1):
                 if stop_requested():
