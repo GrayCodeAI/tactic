@@ -67,11 +67,11 @@ class LLMResponse:
     total_tokens: int = 0
 
 
-def _call(system: str, messages: list[dict], temperature: float) -> LLMResponse:
+def _call(system: str, messages: list[dict], temperature: float, model_name: str | None = None) -> LLMResponse:
     from .thinking import reasoning_effort_for_level, thinking_level_from_env
 
     kwargs: dict = {
-        "model": model(),
+        "model": model_name or model(),
         "messages": [{"role": "system", "content": system}, *messages],
         "temperature": temperature,
         "max_tokens": 16384,
@@ -112,6 +112,7 @@ def chat(
     messages: list[dict],
     temperature: float = 0.2,
     retries: int = 4,
+    model_name: str | None = None,
 ) -> LLMResponse:
     """One LLM turn with a hard wall-clock cap and 429 backoff.
     Returns LLMResponse with content and token usage."""
@@ -119,7 +120,7 @@ def chat(
 
     def run(result: _CallResult) -> None:
         try:
-            result.response = _call(system, messages, temperature)
+            result.response = _call(system, messages, temperature, model_name)
         except BaseException as e:  # noqa: BLE001 — report any failure as an error response
             result.error = str(e)
 

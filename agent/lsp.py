@@ -255,6 +255,60 @@ class LeanLSP:
                 return goals
         return None
 
+    def run_tactic(
+        self,
+        text: str,
+        tactic: str,
+        line: int | None = None,
+        character: int | None = None,
+    ) -> str | None:
+        """Apply `tactic` virtually and return the resulting goal state.
+
+        Uses the Lean infoview's ``Lean.Widget.runTactic`` RPC: the tactic is
+        run against a snapshot of the goal at the given position (default: end
+        of the last non-empty line) without modifying the file. Returns the
+        formatted goals, or None on any failure — callers must treat it as
+        best-effort, exactly like `goal_at_end`.
+
+        NOTE: this RPC only exists in Lean ≥ v4.22. On our pinned v4.20.0
+        toolchain the server answers "No RPC method 'Lean.Widget.runTactic'
+        found" and the method returns None (verified against the real server).
+        It becomes usable once the toolchain is bumped.
+        """
+        with self._lock:
+            if not self.open_file():
+                return None
+            self.update(text)
+            lines = text.splitlines()
+            if line is None:
+                line = len(lines) - 1
+                while line >= 0 and not lines[line].strip():
+                    line -= 1
+            line = max(line, 0)
+            if character is None:
+                character = len(lines[line]) if line < len(lines) else 0
+
+            pos = {"line": line, "character": character}
+            td = {"uri": self.uri}
+            resp = self._request("$/lean/rpc/connect", {"uri": self.uri})
+            if resp is None or "error" in resp:
+                return None
+            sid = resp.get("result", {}).get("sessionId")
+            params = {"textDocument": td, "position": pos, "tactic": tactic}
+            resp = self._request(
+                "$/lean/rpc/call",
+                {
+                    "sessionId": sid,
+                    "method": "Lean.Widget.runTactic",
+                    "textDocument": td,
+                    "position": pos,
+                    "params": params,
+                },
+            )
+            if resp is None or "error" in resp or resp.get("result") is None:
+                return None
+            return format_goals(resp["result"])
+
     def close(self) -> None:
         with self._lock:
             if self._proc is not None:

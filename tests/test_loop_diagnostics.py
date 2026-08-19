@@ -13,7 +13,7 @@ from agent import llm, loop
 def failing_llm(monkeypatch):
     """LLM that always answers with an error (forces the llm_error path)."""
 
-    def fake_chat(system, messages, temperature=0.2, retries=4):
+    def fake_chat(system, messages, temperature=0.2, retries=4, model_name=None):
         return llm.LLMResponse(content="[LLM error: 429 rate limit]")
 
     monkeypatch.setattr(llm, "chat", fake_chat)

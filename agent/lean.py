@@ -73,6 +73,16 @@ def check_file(lean_file: Path, lean_dir: Path, timeout: int = 60) -> tuple[bool
     return proved, output
 
 
+def compile_only(lean_file: Path, lean_dir: Path, timeout: int = 60) -> tuple[int, str]:
+    """Check a file is well-formed without requiring the proof to close.
+
+    Unlike check_file, a trailing 'sorry' is tolerated (exit code 0): we only
+    care that the file parses and the declaration type-checks.
+    Returns (returncode, output).
+    """
+    return _run_group(["lake", "env", "lean", str(lean_file)], lean_dir, timeout)
+
+
 def parse_diagnostics(output: str) -> list[Diagnostic]:
     diags = []
     for line in output.splitlines():

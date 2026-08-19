@@ -50,7 +50,7 @@ def fake_llm(monkeypatch):
     """LLM that always answers with a ring body; counts calls."""
     calls = {"n": 0}
 
-    def fake_chat(system, messages, temperature=0.2, retries=4):
+    def fake_chat(system, messages, temperature=0.2, retries=4, model_name=None):
         calls["n"] += 1
         return llm.LLMResponse(
             content="```lean\n  ring\n```",

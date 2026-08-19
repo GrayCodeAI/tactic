@@ -8,6 +8,7 @@ impossible — the statement is assembled by us, not the model.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from collections.abc import Callable
@@ -83,6 +84,8 @@ class Result:
     stopped: bool = False
     # JSONL session log for this run (None if recording disabled)
     session_path: str | None = None
+    # Per-attempt results when run via prove_best_of (attempt 1 = index 0)
+    attempts: list[Result] = field(default_factory=list)
 
 
 def _get_lean_file(problem_id: str | None = None) -> Path:
@@ -148,6 +151,10 @@ def prove(
     branch_at: int | None = None,
     branch_summary: str | None = None,
     skip_hammers: bool = False,
+    temperature: float = 0.2,
+    difficulty: str | None = None,
+    model_name: str | None = None,
+    lemma_plan: bool | None = None,
 ) -> Result:
     t0 = time.time()
     signature = _split_signature(statement)
@@ -156,6 +163,18 @@ def prove(
     total_prompt = 0
     total_completion = 0
     total_tokens = 0
+
+    # Per-difficulty routing: env overrides (PROVER_MODEL_<TIER> etc.) win,
+    # otherwise fall back to the caller's model/temperature/step defaults.
+    if difficulty is not None:
+        from .router import select as router_select
+
+        cfg = router_select(difficulty, model=model_name, temperature=temperature,
+                            max_steps=max_steps)
+        model_name = cfg["model"]
+        temperature = cfg.get("temperature", temperature)
+        max_steps = cfg.get("max_steps", max_steps)
+    active_model = model_name or llm.model()
 
     session = Session(problem_id=problem_id)
     session_open = session.open() if record_session else False
@@ -167,7 +186,7 @@ def prove(
     # human-readable llm_error event stream.
     diag = ProofCallDiagnosticLogger.from_paths()
     diag_context = ProofCallDiagnosticContext(
-        model=llm.model(),
+        model=active_model,
         cwd=LEAN_DIR,
         session_id=session.id,
         run_id=new_proof_call_run_id(),
@@ -191,8 +210,14 @@ def prove(
 
     target_file = _get_lean_file(problem_id)
 
+    # Lemma-bank: proven helper lemmas prepended above the main theorem.
+    lemma_bank = ""
+    plan_enabled = lemma_plan if lemma_plan is not None else (
+        os.getenv("PROVER_LEMMA_PLAN") == "1"
+    )
+
     def write_file(b: str) -> None:
-        target_file.write_text(HEADER + signature + "\n" + b + "\n")
+        target_file.write_text(HEADER + lemma_bank + signature + "\n" + b + "\n")
 
     def check_file() -> tuple[bool, str]:
         """Run `lean --check` on the target file for fast, isolated verification."""
@@ -214,7 +239,6 @@ def prove(
             return goals
         except Exception:  # noqa: BLE001 — LSP feedback is optional; never break the loop
             return None
-
     def finish(
         proved: bool, steps: int, proof: str, cost: float, stopped: bool = False
     ) -> Result:
@@ -237,7 +261,7 @@ def prove(
         if record_session:
             manager.upsert(SessionRecord(
                 id=session.id, path=str(session.path), problem_id=problem_id,
-                model=llm.model(),
+                model=active_model,
                 status="stopped" if stopped else ("proved" if proved else "failed"),
                 proved=proved, steps=steps,
                 created_at=t0, updated_at=time.time(),
@@ -249,11 +273,11 @@ def prove(
         )
 
     emit("start", statement=statement, problem_id=problem_id,
-         max_steps=max_steps, model=llm.model())
+         max_steps=max_steps, model=active_model)
     if record_session:
         manager.upsert(SessionRecord(
             id=session.id, path=str(session.path), problem_id=problem_id,
-            model=llm.model(), status="running",
+            model=active_model, status="running",
             created_at=t0, updated_at=time.time(),
         ))
 
@@ -315,6 +339,43 @@ def prove(
         body = "  sorry"  # hammers skipped and no resume seed: start from sorry
     write_file(body)
 
+    # ---- Lemma planning: prove helper lemmas first, prepend proven ones
+    # (PROVER_LEMMA_PLAN=1). Skipped on resume (the prior run already had its
+    # chance). Only *proven* lemmas enter the file — never `sorry`.
+    if plan_enabled and not resume_from:
+        try:
+            from .plan import propose_lemmas, prove_lemmas
+
+            proposed = propose_lemmas(signature, model_name=active_model)
+            emit("plan", proposed=[p[:80] for p in proposed])
+            proven = prove_lemmas(proposed, problem_id=problem_id, max_steps=8,
+                                  model_name=active_model)
+            emit("plan_lemmas", proven=[p[:80] for p in proven])
+            if proven:
+                lemma_bank = "\n\n".join(proven) + "\n\n"
+        except Exception:  # noqa: BLE001, S110 — planning is best-effort
+            pass
+
+    # ---- Lemma retrieval: keyword hints from the local Mathlib index
+    # (PROVER_RETRIEVE=1). Optional, offline, deterministic — never blocks
+    # the loop on the network.
+    retrieval_hints = ""
+    if os.getenv("PROVER_RETRIEVE") == "1":
+        try:
+            from .retrieval import search_lemmas
+
+            hits = search_lemmas(signature, k=5)
+        except Exception:  # noqa: BLE001 — retrieval is best-effort
+            hits = []
+        if hits:
+            retrieval_hints = (
+                "Relevant Mathlib lemmas found by local keyword search "
+                "(name : signature):\n"
+                + "\n".join(f"- {h['name']} : {h['signature']}" for h in hits)
+                + "\n\n"
+            )
+            emit("retrieve", k=len(hits), lemmas=[h["name"] for h in hits])
+
     for step in range(1, max_steps + 1):
         if stop_requested():
             return finish(False, step - 1, "", llm.estimate_cost(total_prompt, total_completion), stopped=True)
@@ -330,19 +391,30 @@ def prove(
         emit("build", step=step, ok=False, diagnostics=ndiag,
              summary=(diags[0].message if diags else "sorry / not proved"),
              report=report[:4000])
-        goals = get_goals(HEADER + signature + "\n" + body + "\n")
+        goals = get_goals(HEADER + lemma_bank + signature + "\n" + body + "\n")
         if goals:
             emit("goals", step=step, goals=goals)
 
+        lemma_hints = ""
+        if lemma_bank:
+            names = [ln.split("(")[0].split()[1] for ln in lemma_bank.strip().splitlines()
+                     if ln.startswith(("theorem ", "lemma "))]
+            lemma_hints = (
+                "Helper lemmas already proven in this file (use them via "
+                f"rw/exact/simpa): {', '.join(names)}\n\n"
+            )
+
         user_msg = (
             f"Theorem signature:\n{signature}\n\n"
-            f"Compiler diagnostics:\n{report}\n\n"
+            + lemma_hints
+            + retrieval_hints
+            + f"Compiler diagnostics:\n{report}\n\n"
             + (f"Open goals at the end of your last proof attempt:\n{goals}\n\n" if goals else "")
             + "Write ONLY the tactic proof body."
         )
         history.append({"role": "user", "content": user_msg})
         emit("llm_request", step=step)
-        resp = llm.chat(SYSTEM, history)
+        resp = llm.chat(SYSTEM, history, temperature=temperature, model_name=active_model)
         if resp.content.startswith("[LLM error"):
             emit("llm_error", step=step, error=resp.content)
             diag.log_llm_error(
@@ -375,3 +447,59 @@ def prove(
             emit("compaction", dropped=n_msgs - len(history))
 
     return finish(False, max_steps, "", llm.estimate_cost(total_prompt, total_completion))
+
+
+def prove_best_of(
+    statement: str,
+    n_attempts: int = 1,
+    max_steps: int = 20,
+    verbose: bool = True,
+    problem_id: str | None = None,
+    goal_feedback: bool = True,
+    on_event: Callable[[dict], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    record_session: bool = True,
+    skip_hammers: bool = False,
+    temperature: float = 0.2,
+    temperature_delta: float = 0.4,
+    difficulty: str | None = None,
+    model_name: str | None = None,
+    lemma_plan: bool | None = None,
+) -> Result:
+    """Best-of-N search: run up to N independent repair trajectories.
+
+    Diversity comes from a temperature ramp (attempt 1 uses `temperature`,
+    each later attempt adds `temperature_delta`). Hammers are deterministic,
+    so later attempts skip them. Returns the first proved attempt; if none
+    proves, returns the attempt that got furthest (highest `steps` reached).
+    Each attempt gets its own session record; all results are kept on
+    Result.attempts (index 0 = attempt 1).
+    """
+    n = max(1, n_attempts)
+    results: list[Result] = []
+    for i in range(1, n + 1):
+        temp = temperature + temperature_delta * (i - 1)
+        r = prove(
+            statement,
+            max_steps=max_steps,
+            verbose=verbose,
+            problem_id=problem_id,
+            goal_feedback=goal_feedback,
+            on_event=on_event,
+            should_stop=should_stop,
+            record_session=record_session,
+            skip_hammers=skip_hammers or i > 1,
+            temperature=temp,
+            difficulty=difficulty,
+            model_name=model_name,
+            lemma_plan=lemma_plan,
+        )
+        results.append(r)
+        if r.proved:
+            break
+
+    best = next((r for r in results if r.proved), None) or max(
+        results, key=lambda r: r.steps
+    )
+    best.attempts = results
+    return best

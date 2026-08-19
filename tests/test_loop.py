@@ -49,7 +49,7 @@ def install_chat(monkeypatch, responses: list[str]) -> dict:
     state = {"calls": 0}
 
     def fake(system: str, messages: list[dict], temperature: float = 0.2,
-             retries: int = 4) -> llm.LLMResponse:
+             retries: int = 4, model_name: str | None = None) -> llm.LLMResponse:
         i = min(state["calls"], len(responses) - 1)
         state["calls"] += 1
         return llm.LLMResponse(content=responses[i], prompt_tokens=10,
@@ -242,3 +242,224 @@ def test_record_session_writes_jsonl_and_index(hermetic, tmp_path: Path,
     index = tmp_path / "sessions" / "index.jsonl"
     assert index.exists()
     assert '"status": "proved"' in index.read_text()
+
+
+# ------------------------------------------------------------- best-of-N search
+
+def _fake_prove(monkeypatch, outcomes: list[tuple[bool, int]], captures: dict) -> None:
+    """Fake `loop.prove` returning canned (proved, steps) outcomes in order."""
+    i = {"n": 0}
+
+    def fake(*args, **kwargs):
+        idx = min(i["n"], len(outcomes) - 1)
+        i["n"] += 1
+        proved, steps = outcomes[idx]
+        stmt = kwargs.get("statement") or (args[0] if args else "")
+        captures["calls"].append(kwargs)
+        return loop.Result(statement=stmt, proved=proved, steps=steps,
+                           seconds=0.1, total_tokens=1, estimated_cost_usd=0.0)
+
+    monkeypatch.setattr(loop, "prove", fake)
+    return i
+
+
+def test_best_of_single_attempt_delegates(hermetic, monkeypatch) -> None:
+    captures = {"calls": []}
+    _fake_prove(monkeypatch, [(True, 3)], captures)
+    r = loop.prove_best_of(STATEMENT, n_attempts=1, verbose=False)
+    assert len(captures["calls"]) == 1
+    assert r.proved
+    assert len(r.attempts) == 1
+
+
+def test_best_of_stops_on_first_proof(hermetic, monkeypatch) -> None:
+    captures = {"calls": []}
+    _fake_prove(monkeypatch, [(True, 2), (False, 5)], captures)
+    r = loop.prove_best_of(STATEMENT, n_attempts=3, verbose=False)
+    assert len(captures["calls"]) == 1
+    assert r.proved and r.steps == 2
+
+
+def test_best_of_all_fail_returns_furthest(hermetic, monkeypatch) -> None:
+    captures = {"calls": []}
+    _fake_prove(monkeypatch, [(False, 2), (False, 7), (False, 4)], captures)
+    r = loop.prove_best_of(STATEMENT, n_attempts=3, verbose=False)
+    assert len(captures["calls"]) == 3
+    assert not r.proved
+    assert r.steps == 7
+    assert len(r.attempts) == 3
+    assert [a.steps for a in r.attempts] == [2, 7, 4]
+
+
+def test_best_of_ramps_temperature_and_skips_hammers(hermetic, monkeypatch) -> None:
+    captures = {"calls": []}
+    _fake_prove(monkeypatch, [(False, 1), (False, 1)], captures)
+    loop.prove_best_of(STATEMENT, n_attempts=2, verbose=False, temperature=0.2)
+    temps = [c["temperature"] for c in captures["calls"]]
+    assert temps == pytest.approx([0.2, 0.6])
+    assert captures["calls"][0]["skip_hammers"] is False
+    assert captures["calls"][1]["skip_hammers"] is True
+
+
+def test_best_of_clamps_n_attempts(hermetic, monkeypatch) -> None:
+    captures = {"calls": []}
+    _fake_prove(monkeypatch, [(False, 1)], captures)
+    loop.prove_best_of(STATEMENT, n_attempts=0, verbose=False)
+    assert len(captures["calls"]) == 1
+
+
+def test_prove_threads_temperature_to_chat(hermetic, monkeypatch) -> None:
+    """The temperature passed to prove() reaches the LLM call."""
+    install_check(monkeypatch, ok_on=None)  # every build fails
+    temps: list[float] = []
+
+    def chat(system, messages, temperature=0.2, retries=4, model_name=None):
+        temps.append(temperature)
+        return llm.LLMResponse(content="```lean\n  simp\n```", prompt_tokens=10,
+                               completion_tokens=5, total_tokens=15)
+
+    monkeypatch.setattr(loop.llm, "chat", chat)
+    loop.prove(STATEMENT, max_steps=2, verbose=False,
+               problem_id="temp", goal_feedback=False,
+               record_session=False, temperature=0.7)
+    assert temps and all(t == 0.7 for t in temps)
+
+
+# ------------------------------------------------------------------ retrieval
+
+def _retrieval_chat(monkeypatch, captured: list) -> None:
+    def chat(system, messages, temperature=0.2, retries=4, model_name=None):
+        user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+        captured.append(user_msgs[-1] if user_msgs else "")
+        return llm.LLMResponse(content="```lean\n  simp\n```", prompt_tokens=10,
+                               completion_tokens=5, total_tokens=15)
+
+    monkeypatch.setattr(loop.llm, "chat", chat)
+
+
+def test_retrieval_disabled_by_default(hermetic, monkeypatch) -> None:
+    install_check(monkeypatch, ok_on=None)
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="no-retrieve", goal_feedback=False,
+                   record_session=False)
+    assert "retrieve" not in [e["event"] for e in r.trace]
+    assert "Relevant Mathlib lemmas" not in captured[0]
+
+
+def test_retrieval_hints_injected_when_enabled(hermetic, monkeypatch) -> None:
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.setenv("PROVER_RETRIEVE", "1")
+    monkeypatch.setattr("agent.retrieval.search_lemmas",
+                        lambda *a, **k: [{"name": "nat_add_comm", "signature": "theorem nat_add_comm (a b : ℕ) : a + b = b + a"}])
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="retrieve", goal_feedback=False,
+                   record_session=False)
+    events = [e["event"] for e in r.trace]
+    assert "retrieve" in events
+    retrieve = next(e for e in r.trace if e["event"] == "retrieve")
+    assert retrieve["lemmas"] == ["nat_add_comm"]
+    assert "nat_add_comm : theorem nat_add_comm" in captured[0]
+
+
+def test_retrieval_failure_does_not_break_loop(hermetic, monkeypatch) -> None:
+    """A broken index must never abort the proof loop."""
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.setenv("PROVER_RETRIEVE", "1")
+    def boom(*a, **k):
+        raise RuntimeError("index corrupt")
+    monkeypatch.setattr("agent.retrieval.search_lemmas", boom)
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="retrieve-boom", goal_feedback=False,
+                   record_session=False)
+    assert "retrieve" not in [e["event"] for e in r.trace]
+    assert captured[0].startswith("Theorem signature:")
+
+
+# -------------------------------------------------------------------- routing
+
+def test_router_selects_model_for_difficulty(hermetic, monkeypatch) -> None:
+    """PROVER_MODEL_<TIER> routes the model actually used for the LLM call."""
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.setenv("PROVER_MODEL_EASY", "routed-model")
+    monkeypatch.setenv("PROVER_TEMP_EASY", "0.5")
+    monkeypatch.setenv("PROVER_STEPS_EASY", "3")
+    seen: dict = {}
+
+    def chat(system, messages, temperature=0.2, retries=4, model_name=None):
+        seen["model"] = model_name
+        seen["temperature"] = temperature
+        return llm.LLMResponse(content="```lean\n  simp\n```", prompt_tokens=10,
+                               completion_tokens=5, total_tokens=15)
+
+    monkeypatch.setattr(loop.llm, "chat", chat)
+    r = loop.prove(STATEMENT, max_steps=2, verbose=False,
+                   problem_id="routed", goal_feedback=False,
+                   record_session=False, difficulty="easy")
+    assert seen["model"] == "routed-model"
+    assert seen["temperature"] == 0.5
+    # routed max_steps caps the loop
+    assert not r.proved
+    assert r.steps == 3
+
+
+def test_router_unset_difficulty_uses_default_model(hermetic, monkeypatch) -> None:
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.delenv("PROVER_MODEL", raising=False)
+    seen: dict = {}
+
+    def chat(system, messages, temperature=0.2, retries=4, model_name=None):
+        seen["model"] = model_name
+        return llm.LLMResponse(content="```lean\n  simp\n```", prompt_tokens=10,
+                               completion_tokens=5, total_tokens=15)
+
+    monkeypatch.setattr(loop.llm, "chat", chat)
+    loop.prove(STATEMENT, max_steps=1, verbose=False,
+               problem_id="default-model", goal_feedback=False,
+               record_session=False)
+    assert seen["model"] == "gpt-4o"
+
+
+# ------------------------------------------------------------------ lemma plan
+
+def test_lemma_plan_prepends_proven_helpers(hermetic, monkeypatch) -> None:
+    """PROVER_LEMMA_PLAN=1 proves helpers first and prepends them to the file."""
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.setenv("PROVER_LEMMA_PLAN", "1")
+    lemma_decl = "theorem prover_plan_1 (a b : ℕ) : a + b = b + a := by\n  omega"
+    monkeypatch.setattr("agent.plan.propose_lemmas",
+                        lambda *a, **k: ["theorem prover_plan_1 (a b : ℕ) : a + b = b + a := by\n  sorry"])
+    monkeypatch.setattr("agent.plan.prove_lemmas", lambda *a, **k: [lemma_decl])
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="planned", goal_feedback=False,
+                   record_session=False)
+    events = [e["event"] for e in r.trace]
+    assert "plan" in events
+    assert "plan_lemmas" in events
+    assert r.trace[events.index("plan_lemmas")]["proven"] == [lemma_decl[:80]]
+    # the helper lemma is in the file above the main theorem
+    f = hermetic / "tmp" / "Prover_planned.lean"
+    text = f.read_text()
+    assert "theorem prover_plan_1 (a b : ℕ) : a + b = b + a := by" in text
+    assert text.index("prover_plan_1") < text.index("prover_loop")
+    # the model was told about the helpers
+    assert "prover_plan_1" in captured[0]
+
+
+def test_lemma_plan_off_by_default(hermetic, monkeypatch) -> None:
+    install_check(monkeypatch, ok_on=None)
+    monkeypatch.delenv("PROVER_LEMMA_PLAN", raising=False)
+    captured: list = []
+    _retrieval_chat(monkeypatch, captured)
+    r = loop.prove(STATEMENT, max_steps=1, verbose=False,
+                   problem_id="unplanned", goal_feedback=False,
+                   record_session=False)
+    assert "plan" not in [e["event"] for e in r.trace]
+    assert "prover_plan_" not in captured[0]

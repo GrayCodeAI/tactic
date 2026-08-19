@@ -11,11 +11,16 @@ import sys
 # Unbuffered stdout so background runs (nohup ... > log) show progress live.
 sys.stdout.reconfigure(line_buffering=True)
 
-from .loop import prove
+from .loop import prove, prove_best_of
 
 
 def cmd_prove(args: argparse.Namespace) -> int:
     from .rendering import create_event_renderer
+
+    def run(prove_fn):
+        return prove_fn(args.statement, max_steps=args.max_steps,
+                        goal_feedback=not args.no_goal_feedback,
+                        record_session=not args.no_record)
 
     mode = args.output
     if mode in ("json", "transcript"):
@@ -29,9 +34,14 @@ def cmd_prove(args: argparse.Namespace) -> int:
         return 0 if ok and r.proved else 1
 
     print(f"Proving:\n{args.statement}\n")
-    r = prove(args.statement, max_steps=args.max_steps,
-              goal_feedback=not args.no_goal_feedback,
-              record_session=not args.no_record)
+    if args.n_attempts > 1:
+        r = prove_best_of(args.statement, n_attempts=args.n_attempts,
+                          max_steps=args.max_steps,
+                          goal_feedback=not args.no_goal_feedback,
+                          record_session=not args.no_record)
+        print(f"best-of-{len(r.attempts)}: proved={r.proved} attempts={len(r.attempts)}")
+    else:
+        r = run(prove)
     print(f"\nproved={r.proved} steps={r.steps} time={r.seconds:.1f}s")
     print(f"tokens: {r.total_tokens} (prompt={r.total_prompt_tokens}, completion={r.total_completion_tokens}) cost≈${r.estimated_cost_usd:.6f}")
     if r.session_path:
@@ -42,12 +52,14 @@ def cmd_prove(args: argparse.Namespace) -> int:
 
 
 def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: bool = True,
-               record_session: bool = True, skip_hammers: bool = False) -> tuple[dict, int, float]:
+               record_session: bool = True, skip_hammers: bool = False,
+               n_attempts: int = 1) -> tuple[dict, int, float]:
     """Prove a single problem. Returns (result_dict, tokens, cost)."""
     print(f"[{idx}/{total}] {p['id']}: {p['statement'][:70]}...")
-    r = prove(p["statement"], max_steps=max_steps, verbose=False, problem_id=p["id"],
-              goal_feedback=goal_feedback, record_session=record_session,
-              skip_hammers=skip_hammers)
+    r = prove_best_of(p["statement"], n_attempts=n_attempts, max_steps=max_steps,
+                      verbose=False, problem_id=p["id"],
+                      goal_feedback=goal_feedback, record_session=record_session,
+                      skip_hammers=skip_hammers, difficulty=p.get("difficulty"))
     result = {
         "id": p["id"],
         "proved": r.proved,
@@ -59,6 +71,7 @@ def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: boo
         "cost_usd": round(r.estimated_cost_usd, 6),
         "session": r.session_path,
         "trace": r.trace,
+        "attempts": len(r.attempts),
     }
     cost_str = f" cost≈${r.estimated_cost_usd:.6f}" if r.total_tokens else ""
     print(f"    -> {'PROVED' if r.proved else 'FAILED'} in {r.steps} steps ({r.total_tokens} tokens{cost_str})")
@@ -82,7 +95,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
             futures = [
                 executor.submit(_prove_one, p, args.max_steps, i, len(problems),
-                                goal_feedback, args.record, args.no_hammers)
+                                goal_feedback, args.record, args.no_hammers, args.n_attempts)
                 for i, p in enumerate(problems, start + 1)
             ]
             for fut in concurrent.futures.as_completed(futures):
@@ -93,7 +106,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
     else:
         for i, p in enumerate(problems, start + 1):
             result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems),
-                                              goal_feedback, args.record, args.no_hammers)
+                                              goal_feedback, args.record, args.no_hammers,
+                                              args.n_attempts)
             results.append(result)
             total_tokens += tokens
             total_cost += cost
@@ -115,6 +129,31 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     from .mcp import serve
 
     return serve()
+
+
+def cmd_formalize(args: argparse.Namespace) -> int:
+    from .formalize import formalize
+
+    r = formalize(args.statement, max_attempts=args.max_attempts,
+                  model_name=args.model or None)
+    if r.ok:
+        print(r.statement)
+        print(f"\nok: compiles against Mathlib ({r.attempts} attempt(s))")
+        return 0
+    print(r.statement or "(no statement produced)")
+    print(f"\nfailed after {r.attempts} attempt(s): {r.diagnostics[:500]}")
+    return 1
+
+
+def cmd_synth(args: argparse.Namespace) -> int:
+    from .synth import main as synth_main
+
+    return synth_main(["--out", args.out, "--count", str(args.count),
+                       "--max-steps", str(args.max_steps),
+                       "--problems", args.problems,
+                       *(["--seeds", args.seeds] if args.seeds else []),
+                       *(["--no-hammers"] if args.no_hammers else []),
+                       *(["--model", args.model] if args.model else [])])
 
 
 def cmd_tui(args: argparse.Namespace) -> int:
@@ -282,6 +321,8 @@ def cli() -> None:
     p = sub.add_parser("prove", help="prove a single theorem")
     p.add_argument("statement", help="Lean theorem statement (with proof or sorry)")
     p.add_argument("--max-steps", type=int, default=20)
+    p.add_argument("--n-attempts", type=int, default=1,
+                   help="best-of-N: run up to N independent attempts (temperature ramp)")
     p.add_argument("--no-goal-feedback", action="store_true",
                    help="disable LSP goal-state feedback")
     p.add_argument("--no-record", action="store_true",
@@ -300,12 +341,31 @@ def cli() -> None:
                    help="disable LSP goal-state feedback")
     b.add_argument("--no-hammers", action="store_true",
                    help="skip the hammer pre-pass (for retries of known failures)")
+    b.add_argument("--n-attempts", type=int, default=1,
+                   help="best-of-N: up to N independent attempts per problem")
     b.add_argument("--no-record", action="store_false", dest="record",
                    help="disable JSONL session recording")
     b.set_defaults(fn=cmd_bench, record=True)
 
     m = sub.add_parser("mcp", help="run the MCP (Model Context Protocol) stdio server")
     m.set_defaults(fn=cmd_mcp)
+
+    f = sub.add_parser("formalize", help="autoformalize a natural-language statement to Lean")
+    f.add_argument("statement", help="natural-language math statement to formalize")
+    f.add_argument("--max-attempts", type=int, default=4,
+                   help="max formalization+compile attempts (default 4)")
+    f.add_argument("--model", default=None, help="model to use (default: PROVER_MODEL)")
+    f.set_defaults(fn=cmd_formalize)
+
+    sy = sub.add_parser("synth-data", help="generate synthetic proof data (JSONL corpus)")
+    sy.add_argument("--out", default="synth.jsonl", help="output JSONL (train file derived)")
+    sy.add_argument("--count", type=int, default=20, help="number of seed statements")
+    sy.add_argument("--seeds", default=None, help="file with one statement per line")
+    sy.add_argument("--problems", default="benchmark/problems.json", help="seed problems JSON")
+    sy.add_argument("--max-steps", type=int, default=15)
+    sy.add_argument("--model", default=None, help="model name (default: PROVER_MODEL)")
+    sy.add_argument("--no-hammers", action="store_true", help="skip hammer pre-pass")
+    sy.set_defaults(fn=cmd_synth)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
     t.add_argument("-p", "--parallel", type=int, default=1,
