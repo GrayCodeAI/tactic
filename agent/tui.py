@@ -46,6 +46,7 @@ from .autocomplete import command_completions
 from .commands import CommandResult, create_default_command_registry
 from .file_drop import normalize_dropped_paths
 from .loop import prove
+from .models import ModelProfile
 from .session_manager import SessionManager
 from .session_stats import calculate_session_stats
 from .terminal_notification import TerminalNotificationController
@@ -636,6 +637,224 @@ class PromptsScreen(ModalScreen[str | None]):
         self.dismiss(event.option.id)
 
 
+class ModelsScreen(ModalScreen[None]):
+    """Browse/select/add/edit/delete model profiles (agent/models.py store).
+
+    Enter selects the highlighted profile as the active model; `a` adds a new
+    one, `e` edits the highlighted one, `d` deletes it. All changes persist
+    to ~/.prover/models.json and take effect immediately (llm.client() and
+    llm.model() read the store live).
+    """
+
+    CSS = """
+    ModelsScreen { align: center middle; }
+    #models-box {
+        width: 92; height: 80%;
+        background: $panel; border: round $primary; padding: 1 2;
+    }
+    #models-title { height: 1; }
+    #models-list { height: 1fr; }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("enter", "select_profile", "Select", show=False),
+        Binding("a", "add_profile", "Add", show=False),
+        Binding("e", "edit_profile", "Edit", show=False),
+        Binding("d", "delete_profile", "Delete", show=False),
+        Binding("q", "dismiss(None)", "Close"),
+        Binding("escape", "dismiss(None)", "Close"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._active = ""
+        self._profiles: list = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="models-box"):
+            yield Static("", id="models-title")
+            yield OptionList(id="models-list")
+            yield Static("Enter select · a add · e edit · d delete · q close",
+                         classes="hint")
+
+    def on_mount(self) -> None:
+        self._reload()
+
+    def _reload(self) -> None:
+        from . import models as models_mod
+
+        self._profiles = models_mod.load_profiles()
+        self._active = models_mod.resolved_model_name()
+        title = (f"[bold]model profiles[/bold] — active: "
+                 f"[cyan]{self._active or '(none)'}[/cyan]")
+        self.query_one("#models-title", Static).update(title)
+        opt_list = self.query_one(OptionList)
+        opt_list.clear_options()
+        if not self._profiles:
+            opt_list.add_option(Option("(no model profiles — press a to add one)", id=None))
+            return
+        for profile in self._profiles:
+            mark = "▶" if profile.name == self._active else " "
+            endpoint = profile.base_url or "(env endpoint)"
+            label = f"  [dim]— {profile.display}[/dim]" if profile.display != profile.name else ""
+            opt_list.add_option(Option(
+                f"{mark} {profile.name}{label}  [dim]{endpoint}[/dim]",
+                id=profile.name,
+            ))
+
+    def _highlighted(self) -> int:
+        return self.query_one(OptionList).highlighted or 0
+
+    def _current(self) -> ModelProfile | None:
+        idx = self._highlighted()
+        if not (0 <= idx < len(self._profiles)):
+            return None
+        return self._profiles[idx]
+
+    def action_select_profile(self) -> None:
+        profile = self._current()
+        if profile is None:
+            return
+        from . import models as models_mod
+
+        models_mod.save_store(active=profile.name, profiles=self._profiles)
+        self.notify(f"Active model: {profile.name}")
+        self._reload()
+
+    def action_add_profile(self) -> None:
+        self.app.push_screen(ModelFormScreen(), self._on_form_result)
+
+    def action_edit_profile(self) -> None:
+        profile = self._current()
+        if profile is None:
+            return
+        self.app.push_screen(ModelFormScreen(profile), self._on_form_result)
+
+    def _on_form_result(self, profile: ModelProfile | None) -> None:
+        if profile is None:
+            return
+        from . import models as models_mod
+
+        idx = next((i for i, p in enumerate(self._profiles)
+                    if p.name == profile.name), -1)
+        if idx >= 0:
+            self._profiles[idx] = profile
+        else:
+            self._profiles.append(profile)
+        models_mod.save_store(active=self._active, profiles=self._profiles)
+        self.notify(f"Saved profile: {profile.name}")
+        self._reload()
+
+    def action_delete_profile(self) -> None:
+        profile = self._current()
+        if profile is None:
+            return
+        from . import models as models_mod
+
+        self._profiles = [p for p in self._profiles if p.name != profile.name]
+        active = self._active if self._active != profile.name else ""
+        models_mod.save_store(active=active, profiles=self._profiles)
+        self.notify(f"Deleted profile: {profile.name}")
+        self._reload()
+
+
+class ModelFormScreen(ModalScreen[ModelProfile | None]):
+    """Add/edit a model profile (name + optional endpoint/overrides)."""
+
+    CSS = """
+    ModelFormScreen { align: center middle; }
+    #model-form {
+        width: 76; height: auto;
+        background: $panel; border: round $primary; padding: 1 2;
+    }
+    #model-form Input { margin-bottom: 1; }
+    #model-form-buttons { dock: bottom; height: auto; align-horizontal: right; }
+    #model-form-buttons Button { margin-left: 2; }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+enter", "submit", "Save", priority=True),
+    ]
+
+    FIELDS = (
+        ("f-name", "model name (the id sent to the endpoint)", False),
+        ("f-label", "display label (optional)", False),
+        ("f-base", "base URL (empty = env OPENAI_BASE_URL)", False),
+        ("f-key", "API key (empty = env OPENAI_API_KEY)", True),
+        ("f-ctx", "context window in tokens (optional)", False),
+        ("f-in", "prompt cost per 1M tokens, USD (optional)", False),
+        ("f-out", "completion cost per 1M tokens, USD (optional)", False),
+    )
+
+    def __init__(self, profile: ModelProfile | None = None) -> None:
+        super().__init__()
+        self._profile = profile
+
+    def compose(self) -> ComposeResult:
+        title = "edit model profile" if self._profile else "add model profile"
+        yield Static(f"[bold]{title}[/bold]")
+        with Vertical(id="model-form"):
+            for fid, placeholder, password in self.FIELDS:
+                yield Input(
+                    placeholder=placeholder,
+                    password=password,
+                    id=fid,
+                    value="",
+                )
+            with Horizontal(id="model-form-buttons"):
+                yield Button("Save", variant="primary", id="ok")
+                yield Button("Cancel", id="cancel")
+        yield Static("ctrl+enter save · esc cancel", classes="hint")
+
+    def on_mount(self) -> None:
+        profile = self._profile
+        if profile is None:
+            return
+        self.query_one("#f-name", Input).value = profile.name
+        self.query_one("#f-label", Input).value = profile.label
+        self.query_one("#f-base", Input).value = profile.base_url
+        self.query_one("#f-key", Input).value = profile.api_key
+        if profile.context_window is not None:
+            self.query_one("#f-ctx", Input).value = str(profile.context_window)
+        if profile.cost_in is not None:
+            self.query_one("#f-in", Input).value = str(profile.cost_in)
+        if profile.cost_out is not None:
+            self.query_one("#f-out", Input).value = str(profile.cost_out)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            self.action_submit()
+        else:
+            self.dismiss(None)
+
+    def _value(self, fid: str) -> str:
+        return self.query_one(f"#{fid}", Input).value.strip()
+
+    def action_submit(self) -> None:
+        name = self._value("f-name")
+        if not name:
+            self.notify("A model name is required.", severity="warning")
+            return
+        try:
+            ctx = int(self._value("f-ctx")) if self._value("f-ctx") else None
+            cost_in = float(self._value("f-in")) if self._value("f-in") else None
+            cost_out = float(self._value("f-out")) if self._value("f-out") else None
+        except ValueError:
+            self.notify("Context window and costs must be numbers.", severity="warning")
+            return
+        self.dismiss(ModelProfile(
+            name=name,
+            label=self._value("f-label"),
+            base_url=self._value("f-base"),
+            api_key=self.query_one("#f-key", Input).value,
+            context_window=ctx,
+            cost_in=cost_in,
+            cost_out=cost_out,
+        ))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class ProverApp(App):
     """Interactive proof agent dashboard."""
 
@@ -730,7 +949,9 @@ class ProverApp(App):
 
     @property
     def model(self) -> str:
-        return os.environ.get("PROVER_MODEL", "gpt-4o (default)")
+        from . import llm
+
+        return llm.model()
 
     @property
     def session_dir(self) -> Path:
@@ -831,7 +1052,7 @@ class ProverApp(App):
         problems_list.clear()
         for p in self.problems:
             problems_list.append(ProblemRow(p))
-        model = os.environ.get("PROVER_MODEL", "gpt-4o (default)")
+        model = self.model
         self._log(f"model: [cyan]{model}[/cyan] — {len(self.problems)} problems loaded")
         self._log("[dim]p prove · c custom · r run rest · w workers · s stop · "
                   "v sessions · l board · q quit[/dim]")
@@ -1083,6 +1304,8 @@ class ProverApp(App):
             self._request_compaction(result.compact_summary)
         if result.rename_requested and result.rename_session_id:
             self._rename_session(result.rename_session_id, result.rename_title or "")
+        if result.models_requested:
+            self.action_models()
         if result.exit_requested:
             self.exit()
 
@@ -1486,6 +1709,10 @@ class ProverApp(App):
 
     def action_leaderboard(self) -> None:
         self.push_screen(LeaderboardScreen())
+
+    def action_models(self) -> None:
+        """Open the model-profiles manager (agent/models.py store)."""
+        self.push_screen(ModelsScreen())
 
     def action_prompts(self) -> None:
         """Pick and insert a prompt template into the bar (tau's /prompts)."""

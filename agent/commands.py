@@ -77,6 +77,7 @@ class CommandResult:
     rename_requested: bool = False
     rename_session_id: str | None = None
     rename_title: str | None = None
+    models_requested: bool = False
     message: str | None = None
 
 
@@ -246,6 +247,11 @@ def create_default_command_registry() -> CommandRegistry:
     registry.register(SlashCommand(
         name="model", description="Show the active model.",
         usage="/model", handler=_model_command,
+    ))
+    registry.register(SlashCommand(
+        name="models", description="Browse, add and select model profiles.",
+        usage="/models", handler=_models_command,
+        search_terms=("endpoint", "api", "profile", "models", "manage"),
     ))
     registry.register(SlashCommand(
         name="theme", description="Show or set the TUI theme.",
@@ -453,6 +459,10 @@ def _status_command(context: CommandContext) -> CommandResult:
 
 def _model_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, message=f"Model: {context.session.model}")
+
+
+def _models_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, models_requested=True)
 
 
 def _thinking_command(context: CommandContext) -> CommandResult:

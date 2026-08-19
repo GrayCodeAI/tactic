@@ -204,6 +204,12 @@ def test_model_shows_active_model(registry, session) -> None:
     assert "Qwen/Qwen3.8-27B" in (registry.execute(session, "/model").message or "")
 
 
+def test_models_requests_profile_manager(registry, session) -> None:
+    result = registry.execute(session, "/models")
+    assert result.handled
+    assert result.models_requested
+
+
 def test_system_shows_proof_loop_system_prompt(registry, session) -> None:
     msg = registry.execute(session, "/system").message or ""
     assert "Lean 4 theorem prover" in msg
@@ -213,7 +219,7 @@ def test_help_lists_all_commands(registry, session) -> None:
     msg = registry.execute(session, "/help").message or ""
     for name in ("/quit", "/help", "/prove", "/run", "/stop", "/workers",
                  "/resume", "/branch", "/export", "/leaderboard", "/model",
-                 "/system", "/hotkeys", "/status", "/clear", "/theme"):
+                 "/models", "/system", "/hotkeys", "/status", "/clear", "/theme"):
         assert name in msg, name
 
 
@@ -313,8 +319,8 @@ def test_status_shows_thinking_level(registry, session) -> None:
 
 
 def test_registry_command_count(registry) -> None:
-    """20 was tau's alignment number; prover ships 23 built-in (incl. /thinking)."""
-    assert len(registry.list_commands()) == 23
+    """24 built-ins (incl. /thinking and /models)."""
+    assert len(registry.list_commands()) == 24
 
 
 def test_command_result_defaults(registry, session) -> None:

@@ -9,7 +9,11 @@ from dataclasses import dataclass
 
 from openai import OpenAI, Timeout
 
-_client: OpenAI | None = None
+from . import models
+
+# Clients are cached per (base_url, api_key): model profiles may point at
+# different endpoints, so a single global singleton is no longer enough.
+_clients: dict[tuple[str | None, str], OpenAI] = {}
 
 # Hard wall-clock cap per LLM call. httpx read-timeouts reset on every byte
 # received, so slow-streaming reasoning endpoints can hang forever without
@@ -19,32 +23,44 @@ HARD_TIMEOUT = float(os.environ.get("PROVER_LLM_TIMEOUT", "600"))
 
 
 def client() -> OpenAI:
-    global _client
-    if _client is None:
-        # No total-deadline: slow serverless endpoints stream at ~1 tok/s and
-        # would trip a scalar total timeout. Per-phase timeouts keep failures
-        # fast (connect/write/pool); read must be huge because the server can
-        # sit silent for minutes on prefill before the first byte. The wall-
-        # clock cap is enforced by HARD_TIMEOUT via the worker thread join.
-        _client = OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY", "unused"),
-            base_url=os.environ.get("OPENAI_BASE_URL"),
-            timeout=Timeout(connect=15.0, read=900.0, write=15.0, pool=15.0),
-            max_retries=2,
-        )
-    return _client
+    """Client for the active model profile, or the env endpoint when the
+    active model has no profile (or the profile specifies no base_url)."""
+    profile = models.active_profile()
+    base_url = profile.base_url if profile and profile.base_url else None
+    if base_url is None:
+        base_url = os.environ.get("OPENAI_BASE_URL")
+    api_key = profile.api_key if profile and profile.api_key else ""
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY", "unused")
+    key = (base_url, api_key)
+    cached = _clients.get(key)
+    if cached is not None:
+        return cached
+    # No total-deadline: slow serverless endpoints stream at ~1 tok/s and
+    # would trip a scalar total timeout. Per-phase timeouts keep failures
+    # fast (connect/write/pool); read must be huge because the server can
+    # sit silent for minutes on prefill before the first byte. The wall-
+    # clock cap is enforced by HARD_TIMEOUT via the worker thread join.
+    _clients[key] = OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=Timeout(connect=15.0, read=900.0, write=15.0, pool=15.0),
+        max_retries=2,
+    )
+    return _clients[key]
 
 
 def model() -> str:
-    return os.environ.get("PROVER_MODEL", "gpt-4o")
+    return models.resolved_model_name()
 
 
 def available_models(timeout: float = 15.0) -> list[str]:
     """Model names the configured endpoint actually serves (subject to its
-    own request/timeout behavior). Empty when the endpoint is unreachable or
-    the models route itself times out."""
-    base = os.environ.get("OPENAI_BASE_URL")
-    if not base:
+    own request/timeout behavior). Empty when no endpoint is configured, the
+    endpoint is unreachable, or the models route itself times out."""
+    profile = models.active_profile()
+    has_endpoint = bool((profile and profile.base_url) or os.environ.get("OPENAI_BASE_URL"))
+    if not has_endpoint:
         return []
     try:
         raw = client().models.list(timeout=timeout)
@@ -92,7 +108,11 @@ def context_window_tokens(model_name: str | None = None) -> int:
     override = os.environ.get("PROVER_CONTEXT_WINDOW")
     if override and override.isdigit():
         return int(override)
-    name = (model_name or model()).lower()
+    name = model_name or model()
+    profile = models.profile_for(name)
+    if profile is not None and profile.context_window:
+        return profile.context_window
+    name = name.lower()
     for prefix, window in _DEFAULT_CONTEXT_WINDOW_TOKENS.items():
         if name == prefix or name.startswith(prefix):
             return window
@@ -212,6 +232,10 @@ _COST_PER_1M = {
 def estimate_cost(prompt_tokens: int, completion_tokens: int, model_name: str | None = None) -> float:
     """Estimate cost in USD for the given token counts."""
     model_name = model_name or model()
+    # Profile cost overrides win when both halves are present.
+    profile = models.profile_for(model_name)
+    if profile is not None and profile.cost_in is not None and profile.cost_out is not None:
+        return (prompt_tokens * profile.cost_in + completion_tokens * profile.cost_out) / 1_000_000
     # Try exact match first, then prefix match for versioned names
     for key, (in_cost, out_cost) in _COST_PER_1M.items():
         if model_name == key or model_name.startswith(key.rstrip('-*')):

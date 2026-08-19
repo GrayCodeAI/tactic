@@ -37,28 +37,11 @@ export PROVER_MODEL=gpt-4o
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | — | Any OpenAI-compatible provider. |
-| `PROVER_MODEL` | `gpt-4o` | Model name for `/status` + cost lookup. |
-| `PROVER_CONTEXT_WINDOW` | per-model table in `llm.py` | Override the context-window size used to compute the auto-compaction budget. |
-| `PROVER_SESSIONS_DIR` | `~/.prover/sessions` | Where proof sessions (JSONL) are recorded. |
-| `PROVER_PROMPTS_DIR` | `~/.prover/prompts` (or `$PROVER_CONFIG_DIR/prompts`) | User-level prompt templates (project `<repo>/.prover/prompts` wins). |
-| `PROVER_THEMES_DIR` | `~/.prover/themes` | Custom TUI themes (`*.json`). |
-| `PROVER_LOGS_DIR` | `~/.prover/logs` | Diagnostic logs. |
-| `PROVER_CONFIG_DIR` | `~/.prover` | Overrides the whole user config home (prompts/themes/logs/trust). |
-| `PROVER_TRUST` | `always` | Project trust policy: `always` / `never` / `ask`. |
-| `PROVER_NO_SESSIONS` | `0` | `1` disables session recording. |
-| `PROVER_BRANCH_SUMMARY` | `1` | `0` disables model-assisted branch summaries. |
-| `PROVER_THINKING` | unset (`off`) | Reasoning level: `off`/`minimal`/`low`/`medium`/`high`/`xhigh`. Non-`off` sends OpenAI `reasoning_effort`. |
-| `PROVER_DISABLE_THINKING` | `1` | Hard thinking off-switch (vLLM/HF `enable_thinking: False`); an explicit `PROVER_THINKING` wins. |
-| `PROVER_LLM_TIMEOUT` | `600` | Hard wall-clock cap (seconds) per LLM call. Slow serverless endpoints (≈1 tok/s) need this raised; the transport itself uses per-phase timeouts only. |
-| `PROVER_RETRIEVE` | unset | `1` enables local lemma retrieval hints: keyword index over the pinned mathlib checkout plus the Lean-proved corpus (`corpus/lean_proved.jsonl`, entries tagged with the tactic that proved them, plus ≤2 worked example blocks). |
-| `PROVER_LEMMA_PLAN` | unset | `1` enables lemma-bank planning: propose ≤3 helper lemmas, prove them first, prepend only *proven* ones above the main theorem. |
-| `PROVER_SEARCH` | unset | `1` upgrades the hammer pre-pass to `prover_search` (the bounded native search tactic: case split / induction / subst / witness search over the hammer chain). Slower, but solves more problems with zero LLM tokens. |
-| `PROVER_SEARCH_DEPTH` | `3` | `prover_search` depth(s); comma-list = depth ramp (`"3,4"` retries the full search at each depth until one closes). |
-| `PROVER_SEARCH_BUDGET` | `1000` | `prover_search` node budget (file-level `set_option prover_search.budget`). |
-| `PROVER_CORPUS_GROW` | `1` | `0` disables the loop's corpus auto-grow (every proved theorem is appended to `corpus/lean_proved.jsonl`). |
+| `PROVER_MODEL` | `gpt-4o` | Model name for `/status` + cost lookup. Wins over the stored active profile. |
 | `PROVER_MODEL_<TIER>` | `PROVER_MODEL` | Per-difficulty model override (`<TIER>` = `TRIVIAL`/`EASY`/`MEDIUM`/`HARD`). |
 | `PROVER_TEMP_<TIER>` | caller default | Per-difficulty sampling temperature (float). |
 | `PROVER_STEPS_<TIER>` | caller default | Per-difficulty max repair steps (int). |
+| model profiles (`~/.prover/models.json`) | — | Named profiles (model + endpoint + key + context window + cost) managed from the TUI with `/models`. The stored active profile is used when `PROVER_MODEL` is unset. |
 
 ## Usage
 
@@ -86,7 +69,7 @@ prover tui            # explicit; or: prover tui -p 4 (parallel workers)
 
 # Slash commands inside the TUI prompt bar (Tab-less: ctrl+space completes):
 #   /help /prove /run /stop /workers <n> /resume <id> /branch <id> [turn]
-#   /export <path> /theme [name] /status /model /system /hotkeys /clear /quit
+#   /export <path> /theme [name] /status /model /models /system /hotkeys /clear /quit
 #   /usage [session-id|all] /reload
 
 # Run the benchmark (100 theorems, JSON in benchmark/problems.json)
@@ -284,3 +267,33 @@ site/               public leaderboard site (GitHub Pages)
   proving them is a long model run.
 - Mathlib bump to current (`grind` tactic), real RL fine-tuning, and upstream
   contributions are explicitly out of scope (see PROPOSALS.md).
+
+## Model profiles (`/models` in the TUI)
+
+The TUI manages named model profiles via `/models` (Enter = select active,
+`a` add, `e` edit, `d` delete), persisted to `~/.prover/models.json`. Each
+profile binds a model name to an optional endpoint and overrides:
+
+```json
+{
+  "active": "Qwen/Qwen3.8-27B",
+  "profiles": [
+    {
+      "name": "Qwen/Qwen3.8-27B",
+      "label": "Qwen 27B",
+      "base_url": "http://localhost:8000/v1",
+      "api_key": "",
+      "context_window": 262144,
+      "cost_in": null,
+      "cost_out": null
+    }
+  ]
+}
+```
+
+- Empty `base_url`/`api_key` fall back to `OPENAI_BASE_URL`/`OPENAI_API_KEY`;
+  empty cost fields fall back to the pricing table in `agent/llm.py`.
+- `context_window`/`cost_in`/`cost_out` override the auto-compaction budget
+  and cost dashboard for that model.
+- Resolution: `PROVER_MODEL` env > stored `active` > `gpt-4o`. Env always
+  wins, so headless/CI runs are unaffected by TUI-configured profiles.

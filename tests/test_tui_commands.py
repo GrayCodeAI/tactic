@@ -10,7 +10,13 @@ from __future__ import annotations
 import pytest
 from textual.widgets import Input
 
-from agent.tui import MessageScreen, ProverApp, ProveScreen, SelectableRichLog
+from agent.tui import (
+    MessageScreen,
+    ModelsScreen,
+    ProverApp,
+    ProveScreen,
+    SelectableRichLog,
+)
 
 
 async def submit(pilot, text: str) -> None:
@@ -97,6 +103,28 @@ async def test_prove_command_opens_editor_modal() -> None:
         await submit(pilot, "/prove")
         assert isinstance(app.screen, ProveScreen)
         await pilot.press("escape")
+        await pilot.pause()
+
+
+@pytest.mark.anyio
+async def test_models_command_opens_profile_manager(monkeypatch, tmp_path) -> None:
+    from agent import models
+
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.delenv("PROVER_MODEL", raising=False)
+    models.save_store(active="qwen-27b", profiles=[
+        models.ModelProfile(name="qwen-27b", label="Qwen 27B",
+                            base_url="http://profile-test/v1"),
+        models.ModelProfile(name="deepseek-r1"),
+    ])
+    app = ProverApp()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        await submit(pilot, "/models")
+        assert isinstance(app.screen, ModelsScreen)
+        assert app.screen._active == "qwen-27b"
+        assert len(app.screen._profiles) == 2
+        await pilot.press("q")
         await pilot.pause()
 
 

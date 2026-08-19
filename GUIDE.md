@@ -185,7 +185,7 @@ Files:
 - `agent/llm.py` — OpenAI-compatible client, ```lean block extraction, cost tracking
 - `agent/lsp.py` — Lean language server client (goal-state feedback)
 - `agent/mcp.py` — MCP server (expose `prove_theorem` to any agent)
-- `agent/commands.py` — slash-command registry (`/help` `/branch` `/theme` `/new` `/compact` `/name`, …)
+- `agent/commands.py` — slash-command registry (`/help` `/branch` `/theme` `/models` `/new` `/compact` `/name`, …)
 - `agent/autocomplete.py` — slash-command completions
 - `agent/themes.py` — TUI themes (`/theme`, custom in `~/.prover/themes/*.json`)
 - `agent/terminal_title.py` — terminal tab title + braille spinner while running
@@ -221,7 +221,7 @@ Slash commands in the prompt bar (complete with `ctrl+space`):
  /export <path>              save the session transcript (html/jsonl by suffix)
 /prompts                    pick a markdown prompt template to apply
 /theme [name]               prover-dark / prover-light / high-contrast
-/model /system /hotkeys     show model / loop system prompt / keymap
+/model /models /system /hotkeys     show model / manage model profiles / loop system prompt / keymap
 ```
 
 Prompt templates are markdown files in `~/.prover/prompts/` or
