@@ -123,7 +123,7 @@ prover lean-baseline --tactic prover_search --out benchmark/lean_baseline_search
 prover synth-lean --report benchmark/lean_baseline.json --out corpus/lean_proved.jsonl
 
 # Tests
-pytest tests/        # 375 tests (loop, compaction, session, TUI, commands, baselines)
+pytest tests/        # 379 tests (loop, compaction, session, TUI, commands, baselines)
 ```
 
 ## How it works
@@ -222,7 +222,7 @@ agent/              the agent (Python)
   lean_baseline.py  no-LLM baseline runner (prover lean-baseline)
   synth_lean.py     Lean-proved corpus JSONL writer (prover synth-lean)
 benchmark/          fixed theorem set + runner + import_standard.py + merge_reports.py
-tests/              pytest suite (375 tests)
+tests/              pytest suite (379 tests)
 leaderboard.json    local score history (prover leaderboard)
 site/               public leaderboard site (GitHub Pages)
 ```

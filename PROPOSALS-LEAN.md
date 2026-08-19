@@ -105,6 +105,13 @@ Honest numbers so far (100-problem benchmark, real Lean, no LLM):
   zero regressions vs `prover_finish`.
 - `prover synth-lean` writes the Lean-proved corpus JSONL from either
   report (`corpus/lean_proved.jsonl`, 44 or 56 entries).
+- MiniF2F valid (244 problems): `prover_finish` solves **61/244 (25%)**
+  in 2783 s — the mathd_algebra/numbertheory and simple AMC/AIME tier.
+  `prover_search` run in progress (`benchmark/lean_baseline_minif2f_search.json`).
+- Corpus (L5): `prover synth-lean --templates` compiles 42 mathlib-flavored
+  statements with the hammer chain and keeps only Lean-proven ones (41/42;
+  the one rejection, `n - m + m = n`, is false for `m > n`). Merged corpus:
+  102 entries.
 
 ## Deferred / not possible in Lean (documented)
 - LLM API calls, JSON-RPC transport, sessions, TUI, MCP server, CLI,
