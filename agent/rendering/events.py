@@ -20,7 +20,7 @@ import sys
 from enum import StrEnum
 from typing import Protocol
 
-from . import events
+from .. import events
 
 __all__ = [
     "EventRenderer",

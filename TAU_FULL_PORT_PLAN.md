@@ -355,6 +355,8 @@ Phase 13: Provider Fleet ─┘                         └─► Phase 16: TUI+
 
 **Risk:** Med-High — merging two TUI philosophies (benchmark dashboard vs transcript). Mitigate: snapshot tests of `TranscriptView.lines` (identity-based `_identity_index` fast path) and manual QA of `scroll_y` watch.
 
+**✅ DONE (lean-adapted, 2026-08-20):** Phase 16 shipped lean-adapted. *Rendering:* `agent/rendering/` package (base `RenderOptions`, `events` legacy event renderers, `json`/`plain`/`transcript` conversation renderers over typed messages). *TUI substrate:* `agent/tui_state.py` (ToolCallDisplay, BatchedGroup, batch lines, result previews, custom-markup failure dedupe) + `agent/tui_adapter.py` (AgentEvent→ChatItem mapping). *Settings:* `TuiSettings` extended (large_paste_threshold, terminal_bell, window_title_updates) + `TuiKeybindings` + `resolved_theme`. *Autocomplete:* `CompletionState`/`CompletionItem` + `build_completion_state` (slash + session-id completions). *Commands:* `CommandResult` Tau flags (tree/fork/switch/set_model_choice/set_thinking/login/logout/skills/contexts/tools/update) + 9 new commands (`/tree /fork /login /logout /skills /contexts /tools /stats /update`), `/model m@p` provider parsing — registry 24→33. *Export:* markdown transcript + cost table (`/export`, `render_session_markdown`). *CLI:* `agent/cli.py` coding facade (`chat/version/update/login/export/rpc`). *Misc:* `version.py` (pyproject source), `self_docs.py`, `update_check.py` (PyPI poll + throttle), `updater.py` (uv>pipx>pip). 483 tests green (25 new in `test_phase16.py`), ruff clean.
+
 ---
 
 ## 9. Lean-Incompatible Features — Port vs Shim

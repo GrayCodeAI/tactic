@@ -17,7 +17,7 @@ from typing import Any
 
 from . import events
 
-FORMATS = ("jsonl", "html")
+FORMATS = ("jsonl", "html", "md", "markdown")
 
 _EVENT_COLORS = {
     "start": "#a371f7",
@@ -42,6 +42,8 @@ def default_session_export_path(session_path: Path) -> Path:
 def normalize_export_format(format: str | None) -> str:
     """Normalize a format/suffix string to a supported format name."""
     name = (format or "").strip().lstrip(".").lower()
+    if name == "markdown":
+        return "md"
     if name in FORMATS:
         return name
     return "html"
@@ -54,16 +56,25 @@ def export_session(
     format: str | None = None,
     title: str = "Prover Session Export",
     source: str | None = None,
+    cost_table: bool = True,
 ) -> Path:
     """Write a session export in the requested or inferred format.
 
     The format is taken from *format* when given, else inferred from the
-    output path's suffix, defaulting to HTML.
+    output path's suffix, defaulting to HTML. Markdown exports render the
+    transcript and an appended cost table when usage records are present.
     """
     export_format = normalize_export_format(format or output_path.suffix)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if export_format == "jsonl":
         output_path.write_text(_session_jsonl_text(entries), encoding="utf-8")
+    elif export_format == "md":
+        cost_rows = _cost_table_rows(list(entries)) if cost_table else []
+        output_path.write_text(
+            render_session_markdown(entries, title=title, source=source,
+                                    cost_rows=cost_rows),
+            encoding="utf-8",
+        )
     else:
         output_path.write_text(
             render_session_html(entries, title=title, source=source), encoding="utf-8"
@@ -128,3 +139,60 @@ def _render_record(rec: dict[str, Any]) -> str:
             summary += f" tokens={rec.get('tokens', '?')}"
         line = summary
     return f"<div class='line' style='color:{color}'>{html.escape(line)}</div>"
+
+
+def render_session_markdown(
+    entries: Sequence[dict],
+    *,
+    title: str = "Prover Session Export",
+    source: str | None = None,
+    cost_rows: list[tuple[str, str, str, str]] | None = None,
+) -> str:
+    """Render a markdown transcript of a session's event records (tau parity).
+
+    Appends a cost table when *cost_rows* is non-empty.
+    """
+    out = [f"# {title}", ""]
+    if source:
+        out += [f"*source: `{source}`*", ""]
+    for rec in entries:
+        line = events.format(rec)
+        if line is None:
+            continue
+        ev = rec.get("event", "?")
+        if ev == "result":
+            out.append(f"\n## Result\n\n```\n{line}\n```\n")
+        elif ev == "llm_response":
+            body = str(rec.get("body") or "").strip()
+            if body:
+                out.append(f"\n### Response\n\n```\n{body[:2000]}\n```\n")
+        else:
+            out.append(f"- {line}")
+    if cost_rows:
+        out.append("\n## Costs\n")
+        out.append("| Request | Prompt | Output | Est. cost |")
+        out.append("|---------|--------|--------|-----------|")
+        for number, prompt, output, cost in cost_rows:
+            out.append(f"| {number} | {prompt} | {output} | {cost} |")
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _cost_table_rows(records: list[dict[str, Any]]) -> list[tuple[str, str, str, str]]:
+    """(number, prompt_tokens, output_tokens, cost) rows from llm_response records."""
+    rows: list[tuple[str, str, str, str]] = []
+    number = 0
+    for rec in records:
+        if rec.get("event") != "llm_response":
+            continue
+        number += 1
+        prompt = int(rec.get("prompt_tokens") or 0)
+        output = int(rec.get("completion_tokens") or 0)
+        try:
+            from . import llm
+
+            cost = llm.estimate_cost(prompt, output, rec.get("model"))
+            cost_text = "N/A" if cost is None else f"${cost:.4f}"
+        except Exception:  # noqa: BLE001
+            cost_text = "N/A"
+        rows.append((str(number), str(prompt), str(output), cost_text))
+    return rows

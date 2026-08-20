@@ -1,15 +1,89 @@
 """Slash-command autocomplete (ported from huggingface/tau tui/autocomplete.py).
 
-Textual-native simplification of tau's CompletionItem/CompletionState: we only
-complete slash-command prefixes (`/mo` → `/model`, `/exit`, `/quit`…). The
-result is a list of (replacement, description) tuples the prompt UI can render.
+Textual-native simplification of tau's CompletionItem/CompletionState: we
+complete slash-command prefixes (`/mo` → `/model`, `/exit`, `/quit`…) and
+session ids (`/resume 2026…` → recorded session stems).
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from .commands import CommandRegistry, SlashCommand
+
+
+@dataclass(frozen=True, slots=True)
+class CompletionItem:
+    """One completion candidate (tau CompletionItem)."""
+
+    text: str
+    description: str = ""
+    kind: str = "command"  # command | session
+
+
+@dataclass
+class CompletionState:
+    """Tracks the active completion candidates + selection index (tau parity)."""
+
+    items: list[CompletionItem] | None = None
+    index: int = 0
+
+    @property
+    def active(self) -> bool:
+        return bool(self.items)
+
+    @property
+    def current(self) -> CompletionItem | None:
+        if not self.items:
+            return None
+        return self.items[min(self.index, len(self.items) - 1)]
+
+    def set_items(self, items: list[CompletionItem]) -> None:
+        self.items = items or None
+        self.index = 0
+
+    def next(self) -> CompletionItem | None:
+        if not self.items:
+            return None
+        self.index = (self.index + 1) % len(self.items)
+        return self.current
+
+    def previous(self) -> CompletionItem | None:
+        if not self.items:
+            return None
+        self.index = (self.index - 1) % len(self.items)
+        return self.current
+
+    def clear(self) -> None:
+        self.items = None
+        self.index = 0
+
+
+def build_completion_state(
+    registry: CommandRegistry,
+    text: str,
+    session_ids: Sequence[str] = (),
+    max_items: int = 8,
+) -> CompletionState:
+    """Build a completion state for the current prompt text (tau parity).
+
+    Handles slash-command prefixes and session-id suffixes (``/resume 2026…``
+    completes recorded session stems).
+    """
+    state = CompletionState()
+    stripped = text.strip()
+    if stripped.startswith(("/resume ", "/fork ", "/branch ")):
+        _, _, partial = stripped.partition(" ")
+        partial = partial.strip().lower()
+        matches = [s for s in session_ids if s.lower().startswith(partial)]
+        state.set_items(
+            [CompletionItem(text=s, description="session", kind="session") for s in matches[:max_items]]
+        )
+        return state
+    pairs = command_completions(registry, text, max_items=max_items)
+    state.set_items([CompletionItem(text=t, description=d, kind="command") for t, d in pairs])
+    return state
 
 
 def command_completions(
@@ -53,4 +127,9 @@ def _alias_completions(command: SlashCommand) -> list[tuple[str, str]]:
     return sorted(out, key=lambda item: item[0])
 
 
-__all__: Sequence[str] = ["command_completions"]
+__all__: Sequence[str] = [
+    "CompletionItem",
+    "CompletionState",
+    "build_completion_state",
+    "command_completions",
+]

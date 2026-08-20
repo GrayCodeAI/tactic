@@ -319,8 +319,9 @@ def test_status_shows_thinking_level(registry, session) -> None:
 
 
 def test_registry_command_count(registry) -> None:
-    """24 built-ins (incl. /thinking and /models)."""
-    assert len(registry.list_commands()) == 24
+    """33 built-ins (24 prover + 9 Tau-parity: tree, fork, login, logout,
+    skills, contexts, tools, stats, update)."""
+    assert len(registry.list_commands()) == 33
 
 
 def test_command_result_defaults(registry, session) -> None:

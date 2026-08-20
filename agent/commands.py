@@ -79,6 +79,20 @@ class CommandResult:
     rename_title: str | None = None
     models_requested: bool = False
     message: str | None = None
+    tree_picker_requested: bool = False          # /tree — session entry tree picker
+    fork_requested: bool = False                 # /fork — branch at an entry
+    fork_path: str | None = None                 # entry path ("3", "1.2")
+    switch_session_requested: bool = False       # switch_session flag (tau parity)
+    set_model_choice: str | None = None          # /model <name> — model/provider choice
+    set_model_provider: str | None = None        #   provider part of the choice
+    set_thinking: str | None = None              # /thinking <level>
+    login_requested: bool = False                # /login <provider>
+    login_provider: str | None = None
+    logout_requested: bool = False               # /logout <provider>
+    skills_requested: bool = False               # /skills
+    contexts_requested: bool = False             # /contexts
+    tools_requested: bool = False                # /tools
+    update_check_requested: bool = False         # /update
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +296,51 @@ def create_default_command_registry() -> CommandRegistry:
         usage="/name <new name>", handler=_name_command,
         search_terms=("title",),
     ))
+    registry.register(SlashCommand(
+        name="tree", description="Show the session entry tree (branch picker).",
+        usage="/tree", handler=_tree_command,
+        search_terms=("branches", "entries", "history"),
+    ))
+    registry.register(SlashCommand(
+        name="fork", description="Fork the session at an entry (branch summary + fresh tail).",
+        usage="/fork [path]", handler=_fork_command,
+        search_terms=("branch", "split"),
+    ))
+    registry.register(SlashCommand(
+        name="login", description="Sign in to a provider (openai-codex|anthropic|github-copilot).",
+        usage="/login [provider]", handler=_login_command,
+        search_terms=("auth", "oauth", "signin", "credentials"),
+    ))
+    registry.register(SlashCommand(
+        name="logout", description="Remove stored credentials for a provider.",
+        usage="/logout <provider>", handler=_logout_command,
+        search_terms=("signout", "credentials"),
+    ))
+    registry.register(SlashCommand(
+        name="skills", description="List discovered skills.",
+        usage="/skills", handler=_skills_command,
+        search_terms=("injections", "prompts"),
+    ))
+    registry.register(SlashCommand(
+        name="contexts", description="List project context files.",
+        usage="/contexts", handler=_contexts_command,
+        search_terms=("AGENTS.md", ".prover.md", "project"),
+    ))
+    registry.register(SlashCommand(
+        name="tools", description="List the tools bound to the session.",
+        usage="/tools", handler=_tools_command,
+        search_terms=("capabilities",),
+    ))
+    registry.register(SlashCommand(
+        name="stats", description="Show lifetime totals for the active session.",
+        usage="/stats", handler=_stats_command,
+        search_terms=("totals", "lifetime"),
+    ))
+    registry.register(SlashCommand(
+        name="update", description="Check for a newer lean-prover release.",
+        usage="/update", handler=_update_command,
+        search_terms=("upgrade", "version"),
+    ))
     return registry
 
 
@@ -417,6 +476,66 @@ def _export_command(context: CommandContext) -> CommandResult:
                          export_destination=Path(context.args))
 
 
+def _tree_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, tree_picker_requested=True)
+
+
+def _fork_command(context: CommandContext) -> CommandResult:
+    path = context.args.strip() or None
+    return CommandResult(handled=True, fork_requested=True, fork_path=path,
+                         message=("Opening fork picker…" if path is None
+                                  else f"Forking session at entry {path}."))
+
+
+_VALID_LOGIN_PROVIDERS = ("openai-codex", "anthropic", "github-copilot")
+
+
+def _login_command(context: CommandContext) -> CommandResult:
+    provider = context.args.strip().lower()
+    if not provider:
+        return CommandResult(handled=True,
+                             message="Usage: /login <provider> — "
+                                     + ", ".join(_VALID_LOGIN_PROVIDERS))
+    if provider not in _VALID_LOGIN_PROVIDERS:
+        return CommandResult(handled=True,
+                             message=f"Unknown provider: {provider}. "
+                                     f"Available: {', '.join(_VALID_LOGIN_PROVIDERS)}")
+    return CommandResult(handled=True, login_requested=True, login_provider=provider,
+                         message=f"Starting {provider} sign-in…")
+
+
+def _logout_command(context: CommandContext) -> CommandResult:
+    provider = context.args.strip().lower()
+    if not provider or provider not in _VALID_LOGIN_PROVIDERS:
+        return CommandResult(handled=True,
+                             message="Usage: /logout <provider> — "
+                                     + ", ".join(_VALID_LOGIN_PROVIDERS))
+    return CommandResult(handled=True, logout_requested=True,
+                         message=f"Removing {provider} credentials.",
+                         login_provider=provider)
+
+
+def _skills_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, skills_requested=True)
+
+
+def _contexts_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, contexts_requested=True)
+
+
+def _tools_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, tools_requested=True)
+
+
+def _stats_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, usage_requested=True,
+                         message=f"Stats for {context.session.current_session_id or 'active session'}")
+
+
+def _update_command(context: CommandContext) -> CommandResult:
+    return CommandResult(handled=True, update_check_requested=True)
+
+
 def _leaderboard_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, leaderboard_requested=True)
 
@@ -458,7 +577,20 @@ def _status_command(context: CommandContext) -> CommandResult:
 
 
 def _model_command(context: CommandContext) -> CommandResult:
-    return CommandResult(handled=True, message=f"Model: {context.session.model}")
+    args = context.args.strip()
+    if not args:
+        return CommandResult(handled=True, message=f"Model: {context.session.model}")
+    if "@" in args:
+        model, provider = args.split("@", 1)
+        model, provider = model.strip(), provider.strip()
+    else:
+        model, provider = args, ""
+    return CommandResult(
+        handled=True,
+        set_model_choice=model,
+        set_model_provider=provider or None,
+        message=f"Model set to {model}" + (f" ({provider})" if provider else "") + ".",
+    )
 
 
 def _models_command(context: CommandContext) -> CommandResult:
@@ -484,7 +616,7 @@ def _thinking_command(context: CommandContext) -> CommandResult:
         level = normalize_thinking_level(raw)
     except ValueError as exc:
         return CommandResult(handled=True, message=str(exc))
-    return CommandResult(handled=True, thinking_level=level,
+    return CommandResult(handled=True, thinking_level=level, set_thinking=level,
                          message=f"Thinking level set to {level} "
                                  f"({THINKING_LEVEL_DESCRIPTIONS[level]}).")
 
