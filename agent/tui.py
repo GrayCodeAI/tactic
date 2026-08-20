@@ -917,6 +917,7 @@ class ProverApp(App):
         self.command_registry = create_default_command_registry()
         self._live_tokens: int = 0
         self._live_cost: float = 0.0
+        self._compact_warning_shown: set[str] = set()  # track per-session
         mode = os.environ.get("PROVER_NOTIFICATION", self.tui_settings.notification)
         self._terminal_notification = TerminalNotificationController(mode)
 
@@ -1341,6 +1342,7 @@ class ProverApp(App):
         self.counts = {"proved": 0, "failed": 0, "stopped": 0}
         self._live_tokens = 0
         self._live_cost = 0.0
+        self._compact_warning_shown = set()
         self._custom_seq = 0
         self._queued_prompts = []
         for row in self.query(ProblemRow):
@@ -1712,6 +1714,11 @@ class ProverApp(App):
     def _probe_event(self, problem_id: str, ev: dict) -> None:
         """Forward a prove() event to the UI thread."""
         self.call_from_thread(self._render_event, problem_id, ev)
+        # Show diff panel on file write events (full-file mode)
+        if ev.get("event") == "llm_response" and ev.get("accepted"):
+            body = ev.get("body")
+            if body and "\ntheorem" in body or "\nlemma" in body:
+                self.call_from_thread(self._show_proof_diff, problem_id, body)
 
     def _render_event(self, problem_id: str, ev: dict) -> None:
         """Render a prove() event record into the main panels."""
@@ -1731,6 +1738,17 @@ class ProverApp(App):
             cost = ev.get("cost", 0.0)
             if isinstance(cost, (int, float)):
                 self._live_cost += float(cost)
+        # Auto-compact warning: check context window usage
+        elif ev.get("event") == "compaction":
+            dropped = ev.get("dropped", 0)
+            self._log(f"[dim]auto-compacted: dropped {dropped} turns[/dim]")
+            if problem_id not in self._compact_warning_shown:
+                self._compact_warning_shown.add(problem_id)
+                self.notify(
+                    f"Session {problem_id} auto-compacted "
+                    f"(dropped {dropped} turns to stay within context window)",
+                    severity="warning",
+                )
         self._refresh_status()
 
     # ---------------------------------------------------------------- rows/status
@@ -1770,6 +1788,50 @@ class ProverApp(App):
             text = self._queued_prompts.pop(0)
             self._log(f"[dim]applying queued:[/dim] {text[:60]}")
             self._prove_statement(text)
+
+    # ---------------------------------------------------------------- diff
+
+    def _show_proof_diff(self, problem_id: str, body: str) -> None:
+        """Show a diff view of the proof when full-file mode writes a new file."""
+        try:
+            target = REPO / "lean" / "tmp" / f"Prover_{problem_id}.lean"
+            if not target.exists():
+                return
+            current = target.read_text(encoding="utf-8")
+            old = self._get_last_proof_body(problem_id)
+            if old is None:
+                old = current
+            diff = self._compute_diff(old, body)
+            if diff:
+                panel = self.query_one("#proof", RichLog)
+                panel.write(escape(diff))
+                self._log(f"[dim]diff for {problem_id}: {len(diff.splitlines())} lines[/dim]")
+        except Exception as exc:  # noqa: BLE001 — diff is best-effort
+            self._log(f"[dim]diff failed: {exc}[/dim]")
+
+    def _get_last_proof_body(self, problem_id: str) -> str | None:
+        """Get the last proof body for a problem from its session."""
+        try:
+            from . import session as sess_mod
+            sessions = list(sess_mod.list_sessions())
+            for sp in sessions:
+                if sp.stem == problem_id:
+                    records = sess_mod.read_session(sp)
+                    for rec in reversed(records):
+                        if rec.get("event") == "llm_response" and rec.get("body"):
+                            return rec["body"]
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"[dim]failed to get last proof body: {exc}[/dim]")
+        return None
+
+    @staticmethod
+    def _compute_diff(old: str, new: str) -> str:
+        """Compute a simple unified diff between two strings."""
+        import difflib
+        old_lines = old.splitlines(keepends=True)
+        new_lines = new.splitlines(keepends=True)
+        return "".join(difflib.unified_diff(old_lines, new_lines,
+                                            fromfile="old", tofile="new", n=3))
 
     # ---------------------------------------------------------------- clipboard
 
