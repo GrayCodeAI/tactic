@@ -91,13 +91,19 @@ def validate_model(model_name: str | None = None) -> str | None:
 
 # Rough context-window estimates per model family. Used by context_window.py to
 # compute the automatic compaction budget (tau parity). Env override
-# PROVER_CONTEXT_WINDOW short-circuits this lookup.
+# PROVER_CONTEXT_WINDOW short-circuits this lookup. Extended via tau_ai/model_limits.py.
 _DEFAULT_CONTEXT_WINDOW_TOKENS = {
     "gpt-4o": 128_000,
     "gpt-4-turbo": 128_000,
     "gpt-4": 8_192,
     "gpt-3.5-turbo": 16_384,
     "qwen": 262_144,
+    "claude": 200_000,
+    "anthropic": 200_000,
+    "gemini": 1_000_000,
+    "gemma": 128_000,
+    "mistral": 128_000,
+    "deepseek": 128_000,
 }
 DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000
 DEFAULT_COMPACTION_RESERVE_TOKENS = 16_384
@@ -176,9 +182,8 @@ def chat(
     retries: int = 4,
     model_name: str | None = None,
 ) -> LLMResponse:
-    """One LLM turn with a hard wall-clock cap and 429 backoff.
-    Returns LLMResponse with content and token usage."""
-    backoff = 5.0
+    """One LLM turn with a hard wall-clock cap and 429 backoff (tau_ai/retry.py)."""
+    from .provider_retry import retry_delay_seconds
 
     def run(result: _CallResult) -> None:
         try:
@@ -197,8 +202,8 @@ def chat(
             msg = result.error
             is_rate = "429" in msg or "rate limit" in msg.lower()
             if is_rate and attempt < retries:
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 60.0)
+                delay = retry_delay_seconds(attempt, max_delay_seconds=60.0)
+                time.sleep(delay)
                 continue
             return LLMResponse(content=f"[LLM error: {msg}]")
         return result.response  # type: ignore[return-value]
