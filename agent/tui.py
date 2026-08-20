@@ -1543,8 +1543,149 @@ class ProverApp(App):
             self._rename_session(result.rename_session_id, result.rename_title or "")
         if result.models_requested:
             self.action_models()
+        if result.tree_picker_requested:
+            self._show_session_tree()
+        if result.fork_requested:
+            self._fork_session(result.fork_path)
+        if result.set_model_choice:
+            self._switch_model(result.set_model_choice)
+        if result.login_requested and result.login_provider:
+            self._login_provider(result.login_provider)
+        if result.logout_requested and result.login_provider:
+            self._logout_provider(result.login_provider)
+        if result.skills_requested:
+            self._show_skills()
+        if result.contexts_requested:
+            self._show_contexts()
+        if result.tools_requested:
+            self._show_tools()
+        if result.update_check_requested:
+            self._check_update()
         if result.exit_requested:
             self.exit()
+
+    # --------------------------------------------------------- tau commands
+
+    def _show_session_tree(self) -> None:
+        """/tree — render the current session's event records as a flat tree."""
+        current = self.current_session_id
+        if current is None:
+            self.notify("No recorded session yet — prove something first.", severity="warning")
+            return
+        records = sess.read_session(self.session_dir / f"{current}.jsonl")
+        lines = [f"session [cyan]{current}[/cyan] ({len(records)} records)", ""]
+        for rec in records:
+            ev = rec.get("event", "?")
+            step = rec.get("step", "")
+            extra = ""
+            if ev == "result":
+                extra = " PROVED" if rec.get("proved") else " failed"
+            lines.append(f"  {len(lines) - 1}. {ev}{f' step={step}' if step != '' else ''}{extra}")
+        self.push_screen(MessageScreen("session tree", "\n".join(lines[:200])))
+
+    def _fork_session(self, fork_path: str | None) -> None:
+        """/fork — re-run the current session from an earlier step
+        (prover has no entry tree; fork maps onto /branch <id> <turn>)."""
+        current = self.current_session_id
+        if current is None:
+            self.notify("No recorded session to fork.", severity="warning")
+            return
+        turn = None
+        if fork_path is not None:
+            try:
+                turn = max(0, int(fork_path))
+            except ValueError:
+                self.notify("Usage: /fork [step-number]", severity="warning")
+                return
+        self._branch_run(current, turn)
+
+    def _switch_model(self, name: str) -> None:
+        """/model <name> — activate a model profile by name."""
+        from . import models as models_mod
+
+        profile = models_mod.profile_for(name)
+        if profile is None:
+            self.notify(f"No profile named {name} — use /models to add one.", severity="warning")
+            return
+        models_mod.save_store(active=name)
+        self._log(f"model set to [bold]{name}[/bold]")
+        self._refresh_status()
+
+    def _login_provider(self, provider: str) -> None:
+        """/login — run the provider's OAuth flow in a background worker."""
+        self._log(f"starting [bold]{provider}[/bold] sign-in…")
+
+        def _run() -> None:
+            import asyncio
+
+            if provider == "openai-codex":
+                from .oauth.codex import login_openai_codex
+
+                credential = login_openai_codex()
+            else:
+                if provider == "anthropic":
+                    from .oauth.anthropic import login_anthropic as login_async
+                else:
+                    from .oauth.github_copilot import (
+                        login_github_copilot as login_async,
+                    )
+                credential = asyncio.run(login_async())
+            if credential is None:
+                self.call_from_thread(self.notify, "sign-in did not complete", severity="error")
+            else:
+                self.call_from_thread(self.notify, f"signed in to {provider}")
+
+        self.run_worker(_run, thread=True)
+
+    def _logout_provider(self, provider: str) -> None:
+        """/logout — remove stored credentials for a provider."""
+        from .credentials import FileCredentialStore
+
+        if FileCredentialStore().delete(provider):
+            self.notify(f"removed {provider} credentials")
+        else:
+            self.notify(f"no stored credentials for {provider}")
+
+    def _show_skills(self) -> None:
+        """/skills — list discovered skills."""
+        from .skills import load_skills
+
+        skills = load_skills()
+        body = "\n".join(f"- {s.name}: {s.description}" for s in skills) or "(none discovered)"
+        self.push_screen(MessageScreen("skills", body))
+
+    def _show_contexts(self) -> None:
+        """/contexts — list project context files."""
+        from pathlib import Path as _P
+
+        from .context import discover_project_context_with_diagnostics
+
+        files, _ = discover_project_context_with_diagnostics(_P.cwd())
+        body = "\n".join(f"- {f['path']} ({len(f['content'])} chars)" for f in files) or "(none found)"
+        self.push_screen(MessageScreen("project contexts", body))
+
+    def _show_tools(self) -> None:
+        """/tools — list the tools bound to the prove loop."""
+        from .prover_loop import LEAN_DIR
+        from .tools import default_tools
+
+        names = [t.name for t in default_tools(LEAN_DIR)]
+        from .coding_tools import create_coding_tools
+
+        names += [t["name"] for t in create_coding_tools()]
+        self.push_screen(MessageScreen("tools", "\n".join(f"- {n}" for n in names)))
+
+    def _check_update(self) -> None:
+        """/update — check PyPI for a newer release."""
+        from .update_check import check_for_updates
+
+        info = check_for_updates()
+        if info.error:
+            self.notify(f"update check failed: {info.error}", severity="warning")
+        elif info.is_update_available:
+            self.notify(f"update available: {info.current_version} -> {info.latest_version}")
+        else:
+            self.notify(f"lean-prover {info.current_version} is up to date")
 
     def _show_command_message(self, body: str) -> None:
         """Show command output in a modal (tau's _show_command_message)."""
