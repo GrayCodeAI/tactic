@@ -69,6 +69,33 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "validate_proof",
+        "description": (
+            "Comparator-style validation: check a Lean file for axiom injection, "
+            "statement match and kernel acceptance (Tau RPC-inspired). Uses validate.py."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lean_code": {"type": "string", "description": "Full Lean file text to validate"},
+                "statement": {"type": "string", "description": "Expected theorem signature for match"},
+            },
+            "required": ["lean_code"],
+        },
+    },
+    {
+        "name": "loogle_search",
+        "description": "Search Mathlib via Loogle/Moogle (online fallback for retrieval.py keyword index).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Loogle pattern e.g. (?a -> ?b) -> List ?a -> List ?b"},
+                "limit": {"type": "integer", "default": 5, "minimum": 1, "maximum": 20},
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -131,6 +158,26 @@ def _handle_tool(name: str, args: dict) -> tuple[dict, bool]:
         if tier:
             problems = [p for p in problems if p["difficulty"] == tier]
         return {"problems": problems}, False
+
+    if name == "validate_proof":
+        from pathlib import Path as _P
+
+        from .validate import validate_text
+
+        lean_code = args.get("lean_code", "")
+        statement = args.get("statement")
+        lean_dir = _P(__file__).resolve().parent.parent / "lean"
+        r = validate_text(lean_code, lean_dir, expected_signature=statement)
+        return {"ok": r.ok, "reason": r.reason, "axioms_found": r.axioms_found}, r.ok is False
+
+    if name == "loogle_search":
+        from .loogle import search_loogle
+
+        try:
+            hits = search_loogle(args.get("query", ""), limit=int(args.get("limit", 5)))
+            return {"hits": hits}, False
+        except Exception as e:  # noqa: BLE001
+            return {"error": str(e)}, True
 
     return {"error": f"unknown tool: {name}"}, True
 

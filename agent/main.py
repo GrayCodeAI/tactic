@@ -136,6 +136,26 @@ def cmd_bench(args: argparse.Namespace) -> int:
     solved = sum(1 for r in results if r["proved"])
     print(f"\nScore: {solved}/{len(results)}")
     print(f"Total tokens: {total_tokens}, estimated cost: ${total_cost:.6f}")
+    if getattr(args, "validate", False):
+        from pathlib import Path as _P
+
+        from .validate import validate_file
+        lean_dir = _P(__file__).resolve().parent.parent / "lean"
+        validated = 0
+        for r in results:
+            if r["proved"]:
+                lf = lean_dir / "tmp" / f"Prover_{r['id']}.lean"
+                if not lf.exists():
+                    lf = lean_dir / "src" / "Prover.lean"
+                vr = validate_file(lf, lean_dir, expected_signature=r.get("statement", ""))
+                if vr.ok:
+                    validated += 1
+                else:
+                    print(f"  validate fail {r['id']}: {vr.reason}")
+                    r["proved"] = False
+        print(f"Validated: {validated}/{solved} (comparator)")
+        solved = sum(1 for r in results if r["proved"])
+        print(f"Validated score: {solved}/{len(results)}")
     if args.report:
         Path(args.report).write_text(json.dumps({"score": solved, "total": len(results), "total_tokens": total_tokens, "total_cost_usd": round(total_cost, 6), "results": results}, indent=2))
         print(f"Report written to {args.report}")
@@ -176,10 +196,32 @@ def cmd_synth(args: argparse.Namespace) -> int:
 def cmd_lean_baseline(args: argparse.Namespace) -> int:
     from .lean_baseline import main as baseline_main
 
-    return baseline_main(["--problems", args.problems, "--out", args.out,
-                          "--tactic", args.tactic,
-                          "--timeout", str(args.timeout),
-                          "--start", str(args.start)])
+    rc = baseline_main(["--problems", args.problems, "--out", args.out,
+                        "--tactic", args.tactic,
+                        "--timeout", str(args.timeout),
+                        "--start", str(args.start)])
+    if getattr(args, "validate", False) and rc == 0:
+        import json as _j
+        from pathlib import Path as _P
+
+        from .validate import validate_file
+        lean_dir = _P(__file__).resolve().parent.parent / "lean"
+        try:
+            data = _j.loads(_P(args.out).read_text())
+            results = data.get("results", data) if isinstance(data, dict) else data
+            if isinstance(results, dict) and "results" in data:
+                results = data["results"]
+            for r in results if isinstance(results, list) else []:
+                if r.get("proved"):
+                    lf = lean_dir / "tmp" / f"Prover_{r.get('id','')}.lean"
+                    if not lf.exists():
+                        lf = lean_dir / "src" / "Prover.lean"
+                    vr = validate_file(lf, lean_dir, expected_signature=r.get("statement",""))
+                    if not vr.ok:
+                        print(f"  validate fail {r.get('id')}: {vr.reason}")
+        except Exception as e:  # noqa: BLE001
+            print(f"validate error: {e}")
+    return rc
 
 
 def cmd_lean_synth(args: argparse.Namespace) -> int:
@@ -411,8 +453,10 @@ def cli(argv: list[str] | None = None) -> None:
                    help="let the model write whole files (helpers/imports) per problem")
     b.add_argument("--adaptive", action="store_true",
                    help="extend the step budget when the last step made progress")
+    b.add_argument("--validate", action="store_true",
+                    help="Comparator-style validation: check proofs for axiom injection + statement match")
     b.add_argument("--no-record", action="store_false", dest="record",
-                   help="disable JSONL session recording")
+                    help="disable JSONL session recording")
     b.set_defaults(fn=cmd_bench, record=True)
 
     m = sub.add_parser("mcp", help="run the MCP (Model Context Protocol) stdio server")
@@ -444,6 +488,8 @@ def cli(argv: list[str] | None = None) -> None:
                      help="native tactic: prover_finish (hammers) | prover_search (bounded search)")
     lbn.add_argument("--timeout", type=int, default=120)
     lbn.add_argument("--start", type=int, default=1, help="resume from problem N (1-indexed)")
+    lbn.add_argument("--validate", action="store_true",
+                     help="Comparator validation after baseline (axiom injection check)")
     lbn.set_defaults(fn=cmd_lean_baseline)
 
     sl = sub.add_parser("synth-lean",

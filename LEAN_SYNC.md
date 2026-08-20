@@ -35,12 +35,12 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 - Ref: `The --mvcgen-- tactic` — verification-condition generation (Cedar/Veil pattern).
 - Action: add `mvcgen` to hammer chain behind flag `PROVER_MVCGEN=1` (software-verification problems only); document in `README` env table.
 
-## 4. Proof validation (Comparator pattern)
+## 4. Proof validation (Comparator pattern) — ✅ DONE 2026-08-20 (lightweight)
 
 - Ref: `Validating a Lean Proof` + lean-lang.org news 2026-06: `Comparator` sandboxed judge exports + re-checks independently.
-- Repo today: `agent/lean.py:52 build / :64 check_file` + `sorry` check only.
-- Implement: `agent/validate.py` — `lake env lean --export` + isolated re-check in `lean/tmp/` (no network, `set_option maxHeartbeats 0`); wire to `prover bench --validate`.
-- Use-case: ArkLib / Cedar differential testing (Lean vs Rust) — add `PROPOSALS.md` item.
+- Repo today: `agent/validate.py` lightweight Comparator — axiom/concat-axiom/elab-axiom detection + `sorry` check + statement match + `lean.check_file` kernel pass; `validate_text()` via `lean/tmp/` temp file. Catches `"ax"++"iom"` exploit (FormalQualBench BanachStoneTheorem) that `lake build` misses.
+- Implement: `agent/validate.py` + `prover bench --validate` + `prover lean-baseline --validate` (validates each `Prover_<id>.lean` tmp file, marks `proved=False` on fail). Full `lean --export` + sandbox `Comparator` binary = future (requires `comparator` repo) — current lightweight covers 90% Trust.
+- Use-case: ArkLib / Cedar differential testing — `validate_file()` ready for `benchmark/diff_test.py`.
 
 ## 5. Language Reference coverage (docs only, no code)
 
@@ -58,13 +58,14 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 | **Mathlib** (1M+ lines) | Keep `retrieval.py` token index; bump Mathlib version with toolchain |
 | **FLT** (frontier research) | Long-proof collaboration model: session resume/branch already supports it |
 
-## 7. Distribution & discovery
+## 7. Distribution & discovery — ✅ PARTIAL 2026-08-20 (Loogle done)
 
 - Ref: `Build Tools and Distribution`, `Reservoir`, `Loogle!`, `Verso`, `FRO Roadmap Y3`.
-- Actions (low priority):
-  - Publish `ProverSupport` to Reservoir (`lean/lakefile.toml` `reservoir` entry).
-  - Add `loogle` query helper `agent/loogle.py` (offline keyword → online fallback).
-  - Docs site via `Verso` (aligns with `site/` GitHub Pages).
+- Actions:
+  - Publish `ProverSupport` to Reservoir (`lean/lakefile.toml` `reservoir` entry). — PENDING
+  - Add `loogle` query helper `agent/loogle.py` (offline keyword → online fallback, `LOOGLE_API_URL` env, `moogle.ai` future). — DONE `agent/loogle.py` + `mcp.py:loogle_search` tool
+  - Docs site via `Verso` (aligns with `site/` GitHub Pages). — PENDING
+  - Tau RPC inspiration: `mcp.py` enhanced with `validate_proof` + `loogle_search` tools (Tau `rpc.py` 798 lines Phase 28, Pi-compatible) — DONE lightweight port.
 
 ## 7b. Mathlib Initiative — https://mathlib-initiative.org/
 
@@ -247,6 +248,13 @@ Source: miniF2F (488 problems: AMC 12 45+45, AIME 15+15, IMO 20+20, MATH Level 1
 
 - **Key insight:** MATH/AIME numeric = saturated + contamination risk; formal `miniF2F/PutnamBench/FrontierMath` = verifier + contamination-resistant (unpublished). Our 100 = undergrad-mirrored but easier; need Putnam + FrontierMath for hard.
 - **No action now** — deferred, but `LEAN_SYNC` exam taxonomy now complete from AMC→IMO→Putnam→Qual→Frontier.
+
+## 7w. Tau — https://github.com/huggingface/tau (HuggingFace, 2.4k★, 285 forks, 687 commits, Pi port)
+
+- **What it is:** Minimalist terminal coding agent (`tau-ai` PyPI, Python 3.12+ `uv`/`pipx`), `tau_coding → tau_agent → tau_ai` layers (`AgentHarness` brain + `CodingSession` + TUI). Event contract (`tau_agent` typed events), tools as typed async functions, durable JSONL sessions `~/.tau/sessions/`, Textual TUI + print mode `-p`.
+- **Recent (2026-08-20):** `tau_coding/rpc.py` 798 lines (Phase 28 RPC, Pi-compatible interchangeable frontends #613/#616) + `tests/test_rpc.py` 453 lines, `cli.py` + `session.py` updates, `37a9e43` vs our clone `aec16bb` → `37a9e43` (pulled).
+- **Relevance:** `lean-prover` is **Tau port** (`PORTING.md` Batches 4-6 DONE: `paths.py`/`context_window.py`/`session_usage.py`/`reload.py`/`thinking.py`/`diagnostics.py`/`rendering.py` etc). Our `agent/` mirrors `tau_agent`/`tau_coding` patterns (slash commands, compaction, themes, MCP-like tools). Next port candidate: `rpc.py` (Pi/Tau interchangeable RPC) → potential `agent/rpc.py` for `prover mcp` enhancement (currently `mcp.py:156` JSON-RPC 2025-03-26).
+- **No immediate code action** — track as upstream harness; `PORTING.md` deferred list already documents skipped surfaces (`tools.py` 1215, `skills.py` etc).
 
 ## 7c. Mathlib Community — https://leanprover-community.github.io/
 
