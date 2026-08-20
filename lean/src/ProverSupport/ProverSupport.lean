@@ -7,11 +7,12 @@ open BigOperators Nat Finset
 Lean-native proof search for the agent.
 
 `prover_finish` runs the hammer chain *inside* a single Lean invocation —
-`simp`, `ring`, `omega`, `linarith`, `nlinarith`, `norm_num`, `decide`,
-`tauto`, `aesop`, `positivity` — trying each tactic until all goals are
-closed. Tactic names are parsed at run time (via `runParserCategory`) so
-macros like `tauto`/`aesop` expand only when actually executed, never at
-quotation time.
+`grind`, `simp`, `ring`, `omega`, `linarith`, `nlinarith`, `norm_num`,
+`decide`, `tauto`, `aesop`, `positivity` — trying each tactic until all goals
+are closed. `grind` (Lean 4.33+) is tried first as the strongest hammer.
+Tactic names are parsed at run time (via `runParserCategory`) so macros like
+`tauto`/`aesop`/`grind` expand only when actually executed, never at quotation
+time.
 
 The agent previously drove this chain from Python by spawning `lake env lean`
 once per hammer (~10 compiles per problem); `prover_finish` does the same
@@ -22,9 +23,9 @@ namespace ProverSupport
 
 open Lean Elab Tactic Meta
 
-/-- The hammer chain, in order of preference. -/
+/-- The hammer chain, in order of preference (`grind` first on Lean ≥4.33). -/
 def hammerNames : List String :=
-  ["simp", "ring", "omega", "linarith", "nlinarith", "norm_num",
+  ["grind", "simp", "ring", "omega", "linarith", "nlinarith", "norm_num",
    "decide", "tauto", "aesop", "positivity"]
 
 /-- Try one hammer; goals are untouched when it fails or is unknown. -/
@@ -56,7 +57,7 @@ def closeWith (t : TacticM Unit) : TacticM Bool := do
   try
     t
     noGoals
-  catch ex =>
+  catch _ =>
     saved.restore
     pure false
 
@@ -135,7 +136,7 @@ partial def proverSearchDepth (budget : Nat) (depth : Nat) : TacticM Unit := do
         candidates := candidates.push (← `(tactic| use $i:ident * $j:ident))
         candidates := candidates.push (← `(tactic| use $i:ident + $j:ident))
     if ids.length ≤ 3 then
-      for (i, j, k) in (ids.product ids).bind (fun (i, j) => ids.map (fun k => (i, j, k))) do
+      for (i, j, k) in (ids.product ids).flatMap (fun (i, j) => ids.map (fun k => (i, j, k))) do
         if i != j && j != k then
           candidates := candidates.push (← `(tactic| use $i:ident * $j:ident * $k:ident))
     for t in candidates do

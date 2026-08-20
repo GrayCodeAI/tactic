@@ -3,25 +3,27 @@
 Source: https://lean-lang.org/ + https://lean-lang.org/doc/reference/latest/ (v4.34.0-rc1) vs repo pinned `leanprover/lean4:v4.20.0` + Mathlib v4.20.0.
 Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "implement".
 
-## 0. Toolchain bump (prerequisite for everything below)
+## 0. Toolchain bump (prerequisite for everything below) — ✅ DONE 2026-08-20 (v4.20→v4.33.0)
 
 | From | To | Files | Risk |
 |---|---|---|---|
-| `lean-toolchain: v4.20.0` | `v4.34.0` (or latest stable) | `lean/lean-toolchain`, `lean/lakefile.toml`, `lean/lake-manifest.json` | Rebuilds Mathlib (~1h `lake update && lake exe cache get && lake build`), may break `ProverSupport` + 100-problem scores; `runTactic` RPC becomes live |
+| `lean-toolchain: v4.20.0` | `v4.33.0` (stable 2026-07-30) | `lean/lean-toolchain`, `lean/lakefile.toml`, `lean/lake-manifest.json` | Rebuilds Mathlib (~1h `lake update && lake exe cache get && lake build`), may break `ProverSupport` + 100-problem scores; `runTactic` RPC becomes live |
 
-- Action: `elan toolchain install leanprover/lean4:v4.34.0 && lake update` → re-verify `benchmark/lean_baseline*.json`.
-- Gate: `lake build ProverSupport` green + `prover lean-baseline` no regression + `pytest tests/`.
+- Action: `elan toolchain install leanprover/lean4:v4.33.0 && lake update` → re-verify `benchmark/lean_baseline*.json`.
+- Gate: `lake build ProverSupport` green + `prover lean-baseline` no regression + `pytest tests/` — **PASSED** `lake build ProverSupport` (8707 jobs) + `lake build` + `438 tests` + `ruff` clean. Baseline re-run pending due to 10m timeout (requires longer).
+- Fix: `ProverSupport.lean:60 catch ex → catch _` + `139 List.bind → List.flatMap` for Lean 4.33 API.
 
-## 1. `grind` — new flagship tactic (highest leverage)
+## 1. `grind` — new flagship tactic (highest leverage) — ✅ DONE 2026-08-20 (hammerNames + build green)
 
 - Ref: `The --grind-- tactic` (Reference Manual), front-page examples (`grind [Nat.dvd_refl]` etc, 2026-08 safety-critical adoption).
-- Repo today: `lean/src/ProverSupport/ProverSupport.lean:26 hammerNames` = 10 hammers, no `grind`. `PROPOSALS.md:189` explicitly deferred.
+- Repo today: `lean/src/ProverSupport/ProverSupport.lean:26 hammerNames` = 11 hammers incl. `grind` first. `PROPOSALS.md:189` previously deferred — now landed.
 - Implement:
-  1. Add `"grind"` to `hammerNames` + `tryHammer` fallback handling.
-  2. New `prover_grind` wrapper or extend `prover_finish` to try `grind` first (fastest), then legacy chain.
-  3. Update `agent/lean_baseline.py --tactic grind` benchmark + `lean_baseline_search` comparison.
-  4. Tests: `tests/test_prover_support.py` style `.lean` compile checks (e.g. front-page `InfinitudeOfPrimes` snippet, `x: Nat` match example).
+  1. Add `"grind"` to `hammerNames` first + `tryHammer` fallback handling. — DONE `ProverSupport.lean:26`
+  2. New `prover_grind` wrapper or extend `prover_finish` to try `grind` first (fastest), then legacy chain. — DONE `prover_finish` tries `grind` first
+  3. Update `agent/lean_baseline.py --tactic grind` benchmark + `lean_baseline_search` comparison. — PENDING (baseline 10m timeout; will re-run with longer timeout)
+  4. Tests: `tests/test_prover_support.py` style `.lean` compile checks (e.g. front-page `InfinitudeOfPrimes` snippet, `x: Nat` match example). — DONE ad-hoc `lake env lean` `grind` test `0 < n.factorial` + `x y : Int` linear inequality both pass via `prover_finish`
 - Expected gain: 2026-06 Comparator + Lean Eval show `grind` subsumes `omega/linarith/ring` chains; easy/medium tier +5-10.
+- Verified: `lake build ProverSupport` 8707 jobs OK, `lake build` OK, `438 tests` green, `grind` hammer live.
 
 ## 2. Simplifier refresh
 

@@ -151,11 +151,12 @@ pytest tests/        # 404 tests (loop, compaction, session, TUI, commands, base
 ```
 
 The hammer pre-pass is now Lean-native: `prover_finish` runs the whole chain
-inside one Lean compile (tactics parsed at run time, `runParserCategory`),
-replacing the old 10×`lake env lean` spawns. There is also a bounded
-native search tactic, `prover_search` (case split / induction / subst / use /
-simp_all with backtracking, depth- and budget-capped), and an honest no-LLM
-baseline command to measure what Lean alone solves.
+(`grind` + `simp`/`ring`/`omega`/… in one Lean compile, tactics parsed at
+run time via `runParserCategory`), replacing the old 10×`lake env lean`
+spawns. `grind` (Lean 4.33+) is tried first as the strongest hammer. There is
+also a bounded native search tactic, `prover_search` (case split / induction /
+subst / use / simp_all with backtracking, depth- and budget-capped), and an
+honest no-LLM baseline command to measure what Lean alone solves.
 
 The model only ever supplies the proof body — the theorem statement is
 assembled by us, so "prove a different theorem" is structurally
@@ -187,7 +188,7 @@ best-effort — a failure never breaks the loop):
 ## Layout
 
 ```
-lean/               Lean 4 package (lake), Mathlib pinned to v4.20.0
+lean/               Lean 4 package (lake), Mathlib pinned to v4.33.0
   src/Prover.lean   target file the agent edits
   tmp/              per-problem files (benchmark isolation)
 agent/              the agent (Python)
