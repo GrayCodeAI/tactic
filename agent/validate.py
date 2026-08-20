@@ -42,7 +42,10 @@ def validate_file(lean_file: Path, lean_dir: Path, expected_signature: str | Non
     if not proved:
         return ValidationResult(ok=False, reason="lean check failed", output=output, axioms_found=[])
     if expected_signature:
-        sig = expected_signature.strip().split(":= by")[0].strip()
+        # Last `:= by`: statements with scaffolding declarations before the
+        # target theorem (Putnam `_solution` abbrevs, FormalQualBench defs)
+        # carry several; the theorem is always the final declaration.
+        sig = expected_signature.strip().rsplit(":= by", 1)[0].strip()
         name_m = re.search(r"theorem\s+(\w+)", sig)
         if name_m:
             name = name_m.group(1)

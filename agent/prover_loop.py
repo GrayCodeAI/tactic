@@ -121,12 +121,17 @@ def _get_lean_file(problem_id: str | None = None) -> Path:
 def _split_signature(statement: str) -> str:
     """Return the theorem signature up to and including `:= by`.
 
-    Accepts statements given with or without a trailing proof.
+    Accepts statements given with or without a trailing proof. Benchmarks with
+    scaffolding definitions ahead of the theorem (Putnam `_solution` scaffolds,
+    FormalQualBench namespaces) carry multiple `:= by`s — the target theorem is
+    always the LAST declaration, so we cut at the last one.
     """
     s = statement.strip()
-    m = re.search(r":=\s*by\b", s)
-    if m:
-        return s[: m.end()]
+    last_end = None
+    for m in re.finditer(r":=\s*by\b", s):
+        last_end = m.end()
+    if last_end is not None:
+        return s[:last_end]
     # No `:= by` present — append it.
     return s + " := by"
 

@@ -467,7 +467,6 @@ def test_retrieval_corpus_hit_shows_proof(hermetic, monkeypatch) -> None:
     retrieve = next(e for e in r.trace if e["event"] == "retrieve")
     assert retrieve["corpus"] == 1
 
-
 def test_proof_body_extract_and_cap() -> None:
     assert loop._proof_body("prover_search") == ""
     assert loop._proof_body("") == ""
@@ -477,6 +476,19 @@ def test_proof_body_extract_and_cap() -> None:
     assert "refine ⟨?_, ?_⟩" in body and all(ln.startswith("  ") for ln in body.splitlines())
     long_body = "by\n" + "\n".join(f"  have h{i} : True := trivial" for i in range(40))
     assert loop._proof_body(long_body) == ""  # exceeds 300-char cap
+
+
+def test_split_signature_cuts_at_last_by() -> None:
+    # Scaffolded benchmarks (Putnam `_solution` abbrevs, FormalQualBench defs)
+    # carry several `:= by`s ahead of the target theorem: cut at the LAST one.
+    stmt = (
+        "namespace Foo\n\ndef helper (n : ℕ) : ℕ := by\n  exact n\n\n"
+        "theorem prover_putnam_1962_a2 (P : Prop) : P := by\n  sorry"
+    )
+    sig = loop._split_signature(stmt)
+    assert sig.endswith("theorem prover_putnam_1962_a2 (P : Prop) : P := by")
+    assert sig.count(":= by") == 2  # helper's `:= by` kept intact
+    assert loop._split_signature("theorem t : True") == "theorem t : True := by"
 
 
 def test_retrieval_worked_example_injected(hermetic, monkeypatch) -> None:

@@ -28,9 +28,11 @@ SEARCH_OPTIONS = "set_option maxHeartbeats 0\n\n"
 
 def _signature(statement: str) -> str:
     s = statement.strip()
-    m = re.search(r":=\s*by\b", s)
-    if m:
-        return s[: m.end()]
+    last_end = None
+    for m in re.finditer(r":=\s*by\b", s):
+        last_end = m.end()
+    if last_end is not None:
+        return s[:last_end]
     return s + " := by"
 
 

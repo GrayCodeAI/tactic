@@ -18,8 +18,19 @@ def test_build_lean_file_strips_sorry():
 
 
 def test_build_lean_file_appends_by_when_missing():
-    text = lb.build_lean_file("theorem foo (n : \u2115) : n + 0 = n")
+    text = lb.build_lean_file("theorem foo (n : ℕ) : n + 0 = n")
     assert ":= by\n  prover_finish" in text
+
+
+def test_signature_keeps_scaffolding_and_cuts_at_last_by():
+    stmt = (
+        "namespace Foo\n\ndef helper : ℕ := by\n  exact 3\n\n"
+        "theorem prover_MainTheorem : True := by\n  sorry"
+    )
+    text = lb.build_lean_file(stmt)
+    assert "def helper : ℕ := by\n  exact 3" in text
+    assert "theorem prover_MainTheorem : True := by\n  prover_finish" in text
+    assert text.count("prover_finish") == 1
 
 
 def test_load_problems_flat_list(tmp_path: Path):
