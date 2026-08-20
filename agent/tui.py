@@ -77,6 +77,7 @@ class TuiSettings:
     theme: str = "prover-dark"
     notification: str = "auto"  # "auto" | "bell" | "off"
     thinking_level: str = ""    # "" = resolve from env (agent/thinking.py)
+    problem_pane_width: int = 46
 
     def to_json(self) -> dict:
         return {
@@ -84,6 +85,7 @@ class TuiSettings:
             "theme": self.theme,
             "notification": self.notification,
             "thinking_level": self.thinking_level,
+            "problem_pane_width": self.problem_pane_width,
         }
 
     @classmethod
@@ -100,11 +102,14 @@ class TuiSettings:
         notif = str(data.get("notification") or base.notification)
         if notif not in ("auto", "bell", "off"):
             notif = base.notification
+        pane = int(data.get("problem_pane_width") or base.problem_pane_width)
+        pane = min(max(pane, PaneDivider.MIN_WIDTH), PaneDivider.MAX_WIDTH)
         return cls(
             auto_copy_selection=bool(data.get("auto_copy_selection", base.auto_copy_selection)),
             theme=str(data.get("theme") or base.theme),
             notification=notif,
             thinking_level=thinking,
+            problem_pane_width=pane,
         )
 
 
@@ -286,6 +291,74 @@ class ProblemRow(ListItem):
     def set_status(self, status: str) -> None:
         self.status = status
         self.refresh()
+
+
+class PaneDivider(Static):
+    """Draggable divider between the problem list and the side panels.
+
+    Textual 8.2.8 ships no Split container, so the drag is implemented here:
+    left-drag resizes the `#problems` pane (changes are persisted to
+    ~/.prover/tui.json on release), double-click resets it to the default.
+    """
+
+    ALLOW_SELECT = False
+    DEFAULT_WIDTH = 46
+    MIN_WIDTH = 20
+    MAX_WIDTH = 400
+    MIN_SIDE_WIDTH = 40
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._dragging = False
+        self._drag_start_x = 0.0
+        self._drag_start_width = 0
+
+    def _problems(self) -> Vertical:
+        return self.app.query_one("#problems", Vertical)
+
+    def _max_width(self) -> int:
+        terminal = self.app.size.width
+        return max(self.MIN_WIDTH, terminal - self.MIN_SIDE_WIDTH)
+
+    def _set_width(self, width: int) -> None:
+        width = min(max(int(width), self.MIN_WIDTH), self._max_width())
+        self._problems().styles.width = width
+        self.app.tui_settings = replace(
+            self.app.tui_settings, problem_pane_width=width
+        )
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        if event.button != 0 or self.app is None:
+            return
+        self._dragging = True
+        self._drag_start_x = event._screen_x
+        current = self._problems().styles.width
+        self._drag_start_width = int(getattr(current, "value", current))
+        self.add_class("-dragging")
+        self.capture_mouse(True)
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if not self._dragging:
+            return
+        width = self._drag_start_width + int(event._screen_x - self._drag_start_x)
+        self._set_width(width)
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        if not self._dragging:
+            return
+        self._dragging = False
+        self.remove_class("-dragging")
+        self.capture_mouse(False)
+        save_tui_settings(self.app.tui_settings)
+        self.app._refresh_status()
+
+    def on_click(self, event: events.Click) -> None:
+        if event.button != 0 or event.chain < 2 or self.app is None:
+            return
+        self._set_width(self.DEFAULT_WIDTH)
+        save_tui_settings(self.app.tui_settings)
+        self.app._refresh_status()
+        self.app.notify("Pane width reset to default.")
 
 
 class LeaderboardScreen(ModalScreen[None]):
@@ -864,7 +937,12 @@ class ProverApp(App):
     # while a proof run mutates the transcript.
     CSS = """
     #main { height: 1fr; }
-    #problems { width: 46; border-right: solid $primary; }
+    #problems { width: 46; }
+    #pane-divider {
+        width: 2; height: 100%; min-height: 3;
+        background: $primary 20%; content-align: center middle;
+    }
+    #pane-divider:hover, #pane-divider.-dragging { background: $primary; }
     #prompt-box { dock: bottom; height: auto; padding: 0 1; }
     #prompt { height: 1; }
     #prompt-completions { height: auto; max-height: 9; display: none; background: $panel; }
@@ -1015,6 +1093,8 @@ class ProverApp(App):
                 )
                 problems_list = ListView(id="problems-list")
                 yield problems_list
+                yield Static("", id="problems-hint")
+            yield PaneDivider(id="pane-divider")
             with Vertical(id="side"), TabbedContent(initial="tab-log"):
                 with TabPane("Log", id="tab-log"):
                     yield SelectableRichLog(id="log", wrap=False, markup=True)
@@ -1034,6 +1114,7 @@ class ProverApp(App):
         self._register_prover_themes()
         with suppress(Exception):
             self.theme = self.tui_settings.theme
+        self.query_one("#problems").styles.width = self.tui_settings.problem_pane_width
         self._apply_thinking_level()
         self._sync_terminal_title()
         mode = os.environ.get("PROVER_TRUST", "always")
@@ -1051,9 +1132,9 @@ class ProverApp(App):
         """Blur the search bar (escape)."""
         self.query_one("#prompt", PromptInput).focus()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "search-bar":
-            self._filter_problems(event.value)
+            await self._filter_problems(event.value)
             return
         if event.input.id != "prompt":
             return
@@ -1096,12 +1177,12 @@ class ProverApp(App):
         self.notify("Treat as `/prove`? Press p/c or use /prove <statement>.",
                     severity="information")
 
-    def _filter_problems(self, query: str) -> None:
+    async def _filter_problems(self, query: str) -> None:
         """Filter problems by query and render the list."""
         self._search_text = query.strip().lower()
         if not self._search_text:
             self._filtered_problems = []
-            self._render_problem_list([])
+            await self._render_problem_list([])
             return
         q = self._search_text
         results = [
@@ -1111,23 +1192,30 @@ class ProverApp(App):
             or q in p.get("difficulty", "").lower()
         ]
         self._filtered_problems = results
-        self._render_problem_list(results)
+        await self._render_problem_list(results)
         self._log(f"[dim]found {len(results)} problems matching '{query}'[/dim]")
 
-    def _render_problem_list(self, problems: list[dict]) -> None:
+    async def _render_problem_list(self, problems: list[dict]) -> None:
         """Render the problem list ListView."""
         list_view = self.query_one("#problems-list", ListView)
-        list_view.clear()
+        # ListView.clear() removes ListItem children asynchronously; await it
+        # so re-filters never leave stale rows behind the new ones. Hints live
+        # in a separate Static so the list stays a pure List<ProblemRow> and
+        # ListView indices map 1:1 onto the filtered pool.
+        await list_view.clear()
+        hint = self.query_one("#problems-hint", Static)
         if not problems:
-            hint = ("type /bench to load benchmark, "
-                    "or use /import-standard to import a dataset")
-            list_view.append(Static(f"[dim]{hint}[/dim]", id="empty-hint"))
+            hint.update("[dim]type /bench to load benchmark, "
+                        "or use /import-standard to import a dataset[/dim]")
+            hint.display = True
             return
-        for p in problems[:100]:  # cap at 100 for performance
+        if len(problems) > 100:  # cap at 100 for performance
+            hint.update(f"[dim]... and {len(problems) - 100} more[/dim]")
+            hint.display = True
+        else:
+            hint.display = False
+        for p in problems[:100]:
             list_view.append(ProblemRow(p))
-        if len(problems) > 100:
-            list_view.append(Static(f"[dim]... and {len(problems) - 100} more[/dim]",
-                                    id="truncated-hint"))
         self._refresh_status()
 
     # --------------------------------------------------------------- vim nav
@@ -1609,9 +1697,13 @@ class ProverApp(App):
         idx = problems_list.index
         if idx is None:
             idx = 0  # default to first row when nothing is focused yet
-        if not (0 <= idx < len(self.problems)):
+        # The list renders the *filtered* pool; index into the same pool the
+        # rows came from, otherwise an active search maps p onto the wrong
+        # problem (or past the 100-row cap, onto an arbitrary one).
+        pool = self._filtered_problems if self._search_text else self.problems
+        if not (0 <= idx < len(pool)):
             return None
-        return self.problems[idx]
+        return pool[idx]
 
     def action_prove_selected(self) -> None:
         if self._run_active:
@@ -1717,7 +1809,7 @@ class ProverApp(App):
         # Show diff panel on file write events (full-file mode)
         if ev.get("event") == "llm_response" and ev.get("accepted"):
             body = ev.get("body")
-            if body and "\ntheorem" in body or "\nlemma" in body:
+            if body and ("\ntheorem" in body or "\nlemma" in body):
                 self.call_from_thread(self._show_proof_diff, problem_id, body)
 
     def _render_event(self, problem_id: str, ev: dict) -> None:
@@ -1925,19 +2017,6 @@ class ProverApp(App):
         self._reload_before = take_reload_snapshot()
         self._reload_before = replace(self._reload_before, problems=len(self.problems))
         self.run_worker(self._mount_trust_flow(mode), name="project-trust-reload")
-
-    def _emit_reload_summary(self, problems: int) -> None:
-        """Log a Pi-style before/after resource reload summary (tau parity)."""
-        from .reload import ReloadSnapshot, build_reload_summary, take_reload_snapshot
-
-
-        before = getattr(self, "_reload_before", None)
-        if not isinstance(before, ReloadSnapshot):
-            return
-        after = take_reload_snapshot()
-        after = replace(after, problems=problems)
-        summary = build_reload_summary(before, after)
-        self._log(f"reload: {summary.render()}")
 
     def _prompt_template_chosen(self, name: str | None) -> None:
         if not name:

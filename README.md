@@ -324,6 +324,12 @@ profile binds a model name to an optional endpoint and overrides:
 | `w` | Set workers |
 | `q` | Quit |
 
+## Resizable panes
+
+Drag the bar between the problem list and the side panels with the mouse to
+resize the problem pane (left drag); double-click the bar to reset it to the
+default width. The width persists in `~/.prover/tui.json` across runs.
+
 ## Live cost meter
 
 The status bar shows real-time token usage and estimated cost during proofs:
