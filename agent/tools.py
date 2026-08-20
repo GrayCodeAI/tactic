@@ -20,6 +20,9 @@ class ToolResult:
     is_error: bool = False
 
 
+AgentToolResult = ToolResult
+
+
 def lean_check_tool(lean_dir: Path) -> AgentTool:
     def _exec(args: dict) -> dict:
         from .lean import check_file

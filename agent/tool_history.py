@@ -10,7 +10,9 @@ class ToolHistoryRepair:
     synthesized_results: int = 0
 
 
-def repair_tool_history(messages: tuple[dict, ...]) -> ToolHistoryRepair:
+def repair_tool_history(messages) -> ToolHistoryRepair:  # type: ignore[no-untyped-def]
+    if messages and not isinstance(messages[0], dict):
+        return ToolHistoryRepair(messages=tuple(messages), changed=False)
     seen_ids: set[str] = set()
     for m in messages:
         for tc in m.get("tool_calls", []) if isinstance(m.get("tool_calls"), list) else []:
