@@ -288,6 +288,8 @@ Phase 13: Provider Fleet ─┘                         └─► Phase 16: TUI+
 
 **Risk:** High — ordering & missing `pending_initial_entries` (Tau `session.py:379`). Mitigate: diff Tau `load()` line-by-line during review.
 
+**✅ DONE (lean-adapted, 2026-08-20):** Phase 14 shipped lean-adapted (Tau session.py 3389 + provider_config 2563 + tools 1215 → ~1.3k LOC). `CodingSession.load()` replicates Tau ordering (provider resolution → resource/context discovery → tool composition → system prompt build → `AgentHarness` bind). `agent/session/` package: entries/jsonl/storage/memory/tree + legacy flat JSONL moved to `session/flat.py`. `agent/coding_tools.py`: read/edit/write/bash with CRLF round-trip, exact-match edits, unified patches, per-path locks. `provider_config.py` atomic save+`.bak` + legacy `models.json` migration. `catalog_loader.py` builtin catalog (qwen-local, openai, anthropic, deepseek, mistral). Extensions: `system_prompt.py`, `skills.py`, `context.py`, `context_window.py` (typed messages), `paths.py` (TauPaths), `resources.py` (TauResourcePaths), `shell_config.py`, `image_processing.py` (Pillow-guarded shim), `ToolResult.added_tool_names`. 458 tests green (20 new in `test_coding_session.py`), `ruff` clean, prover CLI intact.
+
 ---
 
 ## 7. Phase 15 — Extensions + OAuth + RPC
