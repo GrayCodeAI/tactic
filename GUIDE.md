@@ -283,7 +283,11 @@ attempts so it doesn't repeat the same dead ends.
 
 ---
 
-## 9. The play after it works
+## 9. Ecosystem sync & docs
+
+Full Lean/AI/math landscape (27 sources, 23 sections) → **[LEAN_SYNC.md](LEAN_SYNC.md)**. Deferred implementation plan covers `lean v4.34` `grind`/`mvcgen` + Comparator, Mathlib 300+ tactics + Moogle/SorryDB, Harmonic/Math Inc/EPFL/DeepSeek stacks, benchmarks (miniF2F 488/PutnamBench 640/FrontierMath 338/Qual 23/FIMO/ProofNet), exams (AMC→IMO), provers (Rocq/Isabelle/Metamath/HOL Light), institutes (AIM/IAS/SLMath/ICERM/Fields/Clay/Simons) and 12-paper SOTA. See `PROPOSALS.md` + `PROPOSALS-LEAN.md` for existing roadmap; `LEAN_SYNC.md §0-§8` gives phased next steps.
+
+## 10. The play after it works
 
 1. Run the trivial tier → post the score publicly (X/HN/Lean Zulip)
 2. Iterate the loop, climb the tiers in public
