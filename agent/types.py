@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 JSONPrimitive: TypeAlias = str | int | float | bool | None
-JSONValue: TypeAlias = JSONPrimitive | list["JSONValue"] | dict[str, "JSONValue"]
-JSONObject: TypeAlias = dict[str, JSONValue]
+JSONValue: TypeAlias = Any
+JSONObject: TypeAlias = dict[str, Any]
