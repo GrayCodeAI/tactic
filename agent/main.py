@@ -260,8 +260,27 @@ def cmd_tui(args: argparse.Namespace) -> int:
     except ImportError:
         print("TUI requires the optional 'textual' dependency: pip install 'lean-prover[tui]'")
         return 1
+    extensions = getattr(args, "extensions", []) or []
+    if extensions:
+        _preload_extensions(extensions)
     tui_main(parallel=args.parallel)
     return 0
+
+
+def _preload_extensions(extra_paths: list[str]) -> None:
+    """Load extension paths ahead of the TUI session (Tau --extensions parity)."""
+    from pathlib import Path
+
+    from .extensions import ExtensionRuntime
+
+    rt = ExtensionRuntime.load(
+        paths=[Path(p) for p in extra_paths if Path(p).is_dir()],
+        extra_paths=[Path(p) for p in extra_paths if Path(p).is_file()],
+    )
+    names = [e.name for e in rt.extensions]
+    if names and os.environ.get("PROVER_EXTENSIONS_LOADED") is None:
+        print(f"extensions loaded: {', '.join(names)}")
+    os.environ["PROVER_EXTENSIONS_LOADED"] = "1"
 
 
 def cmd_usage(args: argparse.Namespace) -> int:
@@ -354,6 +373,47 @@ def cmd_sessions(args: argparse.Namespace) -> int:
 
 
 BOARD_FILE = "leaderboard.json"
+
+
+def cmd_login(args: argparse.Namespace) -> int:
+    from . import cli
+
+    return cli.cmd_login(args)
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    from . import cli
+
+    return cli.cmd_update(args)
+
+
+def cmd_rpc(args: argparse.Namespace) -> int:
+    """Native Tau-style RPC stdio loop (`prover rpc`).
+
+    Frames: {"type":"get_state","id":1} -> {"id":1,"success":true,"state":{...}}
+    Use `prover mcp` for the JSON-RPC 2.0 / MCP surface instead.
+    """
+    from .rpc import serve_rpc
+
+    return serve_rpc()
+
+
+def cmd_version(args: argparse.Namespace) -> int:
+    from . import cli
+
+    return cli.cmd_version(args)
+
+
+def cmd_chat(args: argparse.Namespace) -> int:
+    from . import cli
+
+    return cli.cmd_chat(args)
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    from . import cli
+
+    return cli.cmd_export(args)
 
 
 def load_board() -> list[dict]:
@@ -530,7 +590,38 @@ def cli(argv: list[str] | None = None) -> None:
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
     t.add_argument("-p", "--parallel", type=int, default=1,
                    help="number of parallel proof workers (default=1)")
+    t.add_argument("--extensions", action="append", default=[],
+                   help="extension path (file or dir), repeatable (Tau --extensions parity)")
     t.set_defaults(fn=cmd_tui)
+
+    lg = sub.add_parser("login", help="sign in to a provider (openai-codex|anthropic|github-copilot)")
+    lg.add_argument("provider", choices=["openai-codex", "anthropic", "github-copilot"])
+    lg.set_defaults(fn=cmd_login)
+
+    up = sub.add_parser("update", help="check for a newer lean-prover release")
+    up.add_argument("--install", action="store_true")
+    up.add_argument("--check", action="store_true", help="force a fresh PyPI check")
+    up.add_argument("--version", default=None, help="pin a specific version")
+    up.set_defaults(fn=cmd_update)
+
+    vr = sub.add_parser("version", help="print the current version")
+    vr.set_defaults(fn=cmd_version)
+
+    rp = sub.add_parser("rpc", help="run the RPC/MCP stdio server (alias of `mcp`)")
+    rp.set_defaults(fn=cmd_rpc)
+
+    ch = sub.add_parser("chat", help="open a CodingSession REPL (Tau chat parity)")
+    ch.add_argument("--model", default="gpt-4o")
+    ch.add_argument("--provider", default="")
+    ch.add_argument("--cwd", default=None)
+    ch.add_argument("--session-id", default=None)
+    ch.set_defaults(fn=cmd_chat)
+
+    ex = sub.add_parser("export", help="export a recorded session transcript")
+    ex.add_argument("session")
+    ex.add_argument("--output", default=None)
+    ex.add_argument("--format", default=None, choices=["html", "jsonl", "md", "markdown"])
+    ex.set_defaults(fn=cmd_export)
 
     s = sub.add_parser("sessions", help="list/inspect recorded proof sessions (~/.prover/sessions)")
     s.add_argument("id", nargs="?", default=None,

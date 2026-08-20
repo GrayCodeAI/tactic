@@ -1,18 +1,25 @@
 """RPC server — Tau rpc.py port, lean-adapted.
 
-Provides a JSON-RPC-like (Pi-compatible) stdio transport that wraps the
-agent's tool/loop surface.  Lean-adapted: each request hits the loop's
-tool catalog; responses are line-delimited JSON objects following the Pi
-schema (``result`` with ``content``, ``is_error``, etc.).
+Two transports coexist:
 
-Fallback: when the lean tool catalog isn't ready, delegates to MCP.
+* Native RPC mode (Tau/Pi parity): line-delimited JSON frames carrying a
+  ``type`` plus ``id``, e.g. ``{"type":"get_state","id":1}`` responds with
+  ``{"id":1,"success":true,"state":{...}}``. Frames: ``get_state``
+  (session/tool snapshot), ``prove`` (run the lean prove loop headless),
+  and ``tools/list``. This is the mode exercised by
+  ``echo '{"type":"get_state","id":1}' | prover rpc`` from the Phase 15
+  exit criteria.
+* ``serve()`` delegates to the MCP stdio server — the JSON-RPC 2.0 surface
+  that Claude/opencode speak. This is the default so existing clients are
+  unaffected.
+
+``serve()`` and ``serve_rpc()`` are explicit so callers pick the transport.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-from collections.abc import AsyncIterator
+import sys
 from typing import Any
 
 from .mcp import serve as mcp_serve
@@ -31,52 +38,89 @@ class RPCResult:
         }
 
 
-async def run_rpc(stdio_stdin: AsyncIterator[bytes] | None = None, stdio_stdout: Any = None) -> None:
-    """Minimal request→tool-execution RPC loop (stdin/stdout)."""
-    if stdio_stdin is None:
-        stdio_stdin = (line async for line in [])
-    tool_catalog: dict[str, Any] = {}
+def _handle_frame(req: dict) -> dict:
+    """Route one native RPC frame; returns the response dict."""
+    rid = req.get("id")
+    ftype = req.get("type", "")
 
-    async for raw in stdio_stdin:
-        line = raw.decode("utf-8").strip()
+    if ftype == "get_state":
+        from .paths import ProverPaths
+        from .version import current_version
+
+        paths = ProverPaths()
+        try:
+            from . import session as sess
+
+            session_ids = [sp.stem for sp in sess.list_sessions()]
+        except Exception:  # noqa: BLE001
+            session_ids = []
+        return {
+            "id": rid,
+            "success": True,
+            "state": {
+                "version": current_version(),
+                "sessions_dir": str(paths.sessions_dir),
+                "sessions": session_ids,
+            },
+        }
+
+    if ftype == "tools/list":
+        from .prover_loop import LEAN_DIR
+        from .tools import default_tools
+
+        return {
+            "id": rid,
+            "success": True,
+            "tools": [t.name for t in default_tools(LEAN_DIR)],
+        }
+
+    if ftype == "prove":
+        from .loop import prove
+
+        params = req.get("params") or {}
+        statement = str(params.get("statement", "")).strip()
+        if not statement:
+            return {"id": rid, "success": False, "error": "statement is required"}
+        try:
+            r = prove(
+                statement,
+                max_steps=int(params.get("max_steps", 20)),
+                verbose=False,
+                problem_id=params.get("problem_id"),
+                record_session=False,
+            )
+            return {
+                "id": rid,
+                "success": True,
+                "proved": r.proved,
+                "steps": r.steps,
+                "proof": r.proof if r.proved else "",
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {"id": rid, "success": False, "error": str(exc)}
+
+    return {"id": rid, "success": False, "error": f"unknown type: {ftype}"}
+
+
+def serve_rpc(stdin=None, stdout=None) -> int:
+    """Run the native Tau-style RPC loop over stdio until stdin closes."""
+    stdin = stdin or sys.stdin
+    stdout = stdout or sys.stdout
+    for line in stdin:
+        line = line.strip()
         if not line:
             continue
         try:
             req = json.loads(line)
         except json.JSONDecodeError:
-            out = {"id": None, "error": "parse error"}
-            await stdio_stdout.write((json.dumps(out) + "\n").encode())
-            continue
-        id_val = req.get("id")
-        method = req.get("method")
-        params = req.get("params") or {}
-        if method == "tools/list":
-            out = {"id": id_val, "result": {"tools": list(tool_catalog.keys())}}
-        elif method == "tools/call":
-            name = params.get("name", "")
-            args = params.get("args", {})
-            tool = tool_catalog.get(name)
-            if tool is None:
-                out = {"id": id_val, "error": f"unknown tool: {name}"}
-            else:
-                try:
-                    fn = tool.get("execute")
-                    if fn is None:
-                        raise RuntimeError("tool missing execute")
-                    result = fn(args)
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    out = {"id": id_val, "result": result}
-                except (RuntimeError, TypeError, ValueError, KeyError) as exc:
-                    out = {"id": id_val, "error": str(exc)}
+            out = {"id": None, "success": False, "error": "parse error"}
         else:
-            out = {"id": id_val, "error": f"unknown method: {method}"}
-        try:
-            await stdio_stdout.write((json.dumps(out) + "\n").encode())
-        except (BrokenPipeError, OSError):
-            break
+            out = _handle_frame(req)
+        stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+        stdout.flush()
+    return 0
 
 
 def serve() -> int:
-    """Entry point: delegate to MCP (lean path) or standalone RPC."""
+    """Entry point: MCP transport by default (existing clients unaffected)."""
     return mcp_serve()

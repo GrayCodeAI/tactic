@@ -120,6 +120,28 @@ class ExtensionRuntime:
             merged.append({"name": name, **spec})
         return merged
 
+    def command_specs(self) -> dict[str, dict]:
+        """Slash-command specs registered by all active extensions."""
+        merged: dict[str, dict] = {}
+        for ext in self.extensions:
+            context = self.contexts.get(ext.name)
+            if context is not None:
+                merged.update(context.command_specs)
+        return merged
+
+    def build_command_registry(self, builtin_names: set[str] | None = None) -> dict[str, dict]:
+        """Extension commands that don't collide with builtins (tau parity).
+
+        Frontends call this to append extension `/commands` to their slash
+        registry; colliding names are dropped (builtins win, tau parity).
+        """
+        builtin_names = builtin_names or set()
+        return {
+            name: spec
+            for name, spec in self.command_specs().items()
+            if name not in builtin_names
+        }
+
     def emit_session_start_event(self) -> None:
         self._emit_event({"type": "session_start"})
 

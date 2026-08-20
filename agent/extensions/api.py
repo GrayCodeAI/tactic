@@ -198,6 +198,7 @@ class ExtensionContext:
         self.generation = generation
         self._tools: dict[str, dict] = {}
         self._renderers: dict[str, CustomMessageView] = {}
+        self._command_specs: dict[str, dict] = {}
         self._active = True
 
     @property
@@ -214,6 +215,16 @@ class ExtensionContext:
         self._check_active()
         self._tools[name] = dict(spec)
 
+    def register_command(self, name: str, spec: dict) -> None:
+        """Register a slash command (tau register_command parity).
+
+        ``spec`` has ``description``, ``usage`` and a ``handler(args, context)``
+        callable returning a message string (or None). The runtime's
+        ``build_command_registry`` maps these onto the frontend's dispatch.
+        """
+        self._check_active()
+        self._command_specs[name] = dict(spec)
+
     def register_renderer(self, message_type: str, renderer: Any) -> None:
         self._check_active()
         self._renderers[message_type] = CustomMessageView(message_type, renderer)
@@ -228,6 +239,10 @@ class ExtensionContext:
     @property
     def tools(self) -> dict[str, dict]:
         return dict(self._tools)
+
+    @property
+    def command_specs(self) -> dict[str, dict]:
+        return dict(self._command_specs)
 
     @property
     def renderers(self) -> dict[str, CustomMessageView]:
