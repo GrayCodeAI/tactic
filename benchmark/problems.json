@@ -222,12 +222,12 @@
   {
     "id": "two_mul_sum_range_id",
     "difficulty": "easy",
-    "statement": "theorem prover_two_mul_sum_range_id (n : ℕ) : 2 * (∑ i in range n, i) = n * (n - 1) := by\n  sorry"
+    "statement": "theorem prover_two_mul_sum_range_id (n : ℕ) : 2 * (∑ i ∈ range n, i) = n * (n - 1) := by\n  sorry"
   },
   {
     "id": "sum_range_const",
     "difficulty": "easy",
-    "statement": "theorem prover_sum_range_const (n : ℕ) : (∑ i in range n, 1) = n := by\n  sorry"
+    "statement": "theorem prover_sum_range_const (n : ℕ) : (∑ i ∈ range n, 1) = n := by\n  sorry"
   },
   {
     "id": "card_range",
@@ -252,22 +252,22 @@
   {
     "id": "sum_first_n",
     "difficulty": "medium",
-    "statement": "theorem prover_sum_first_n (n : ℕ) : 2 * (∑ i in range (n + 1), i) = n * (n + 1) := by\n  sorry"
+    "statement": "theorem prover_sum_first_n (n : ℕ) : 2 * (∑ i ∈ range (n + 1), i) = n * (n + 1) := by\n  sorry"
   },
   {
     "id": "sum_sq_formula",
     "difficulty": "medium",
-    "statement": "theorem prover_sum_sq_formula (n : ℕ) : 6 * (∑ i in range (n + 1), i ^ 2) = n * (n + 1) * (2 * n + 1) := by\n  sorry"
+    "statement": "theorem prover_sum_sq_formula (n : ℕ) : 6 * (∑ i ∈ range (n + 1), i ^ 2) = n * (n + 1) * (2 * n + 1) := by\n  sorry"
   },
   {
     "id": "sum_odd_eq_sq",
     "difficulty": "medium",
-    "statement": "theorem prover_sum_odd_eq_sq (n : ℕ) : (∑ i in range n, (2 * i + 1)) = n ^ 2 := by\n  sorry"
+    "statement": "theorem prover_sum_odd_eq_sq (n : ℕ) : (∑ i ∈ range n, (2 * i + 1)) = n ^ 2 := by\n  sorry"
   },
   {
     "id": "geom_sum_mul",
     "difficulty": "medium",
-    "statement": "theorem prover_geom_sum_mul (x : ℤ) (n : ℕ) : (x - 1) * (∑ i in range n, x ^ i) = x ^ n - 1 := by\n  sorry"
+    "statement": "theorem prover_geom_sum_mul (x : ℤ) (n : ℕ) : (x - 1) * (∑ i ∈ range n, x ^ i) = x ^ n - 1 := by\n  sorry"
   },
   {
     "id": "pow_dvd_pow",
@@ -337,7 +337,7 @@
   {
     "id": "sum_choose_eq_two_pow",
     "difficulty": "medium",
-    "statement": "theorem prover_sum_choose_eq_two_pow (n : ℕ) : (∑ k in range (n + 1), Nat.choose n k) = 2 ^ n := by\n  sorry"
+    "statement": "theorem prover_sum_choose_eq_two_pow (n : ℕ) : (∑ k ∈ range (n + 1), Nat.choose n k) = 2 ^ n := by\n  sorry"
   },
   {
     "id": "fib_add",
@@ -402,7 +402,7 @@
   {
     "id": "sum_cubes_eq_sq_sum",
     "difficulty": "hard",
-    "statement": "theorem prover_sum_cubes_eq_sq_sum (n : ℕ) : (∑ i in range (n + 1), i) ^ 2 = ∑ i in range (n + 1), i ^ 3 := by\n  sorry"
+    "statement": "theorem prover_sum_cubes_eq_sq_sum (n : ℕ) : (∑ i ∈ range (n + 1), i) ^ 2 = ∑ i ∈ range (n + 1), i ^ 3 := by\n  sorry"
   },
   {
     "id": "le_sqrt",
@@ -412,7 +412,7 @@
   {
     "id": "binomial_theorem_nat",
     "difficulty": "hard",
-    "statement": "theorem prover_binomial_theorem_nat (a b : ℕ) (n : ℕ) : (a + b) ^ n = ∑ k in range (n + 1), Nat.choose n k * a ^ k * b ^ (n - k) := by\n  sorry"
+    "statement": "theorem prover_binomial_theorem_nat (a b : ℕ) (n : ℕ) : (a + b) ^ n = ∑ k ∈ range (n + 1), Nat.choose n k * a ^ k * b ^ (n - k) := by\n  sorry"
   },
   {
     "id": "am_gm_two",

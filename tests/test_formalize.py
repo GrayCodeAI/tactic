@@ -42,7 +42,7 @@ def _install_check(monkeypatch, ok_on: set[int]) -> None:
 def test_formalize_success_normalizes_statement(tmp_path: Path, monkeypatch) -> None:
     _install_check(monkeypatch, ok_on={1})
     _install_chat(monkeypatch, [
-        "```lean\ntheorem my_sum (n : ℕ) : (∑ i in range (n + 1), i) = n * (n + 1) / 2 := by\n  sorry\n```",
+        "```lean\ntheorem my_sum (n : ℕ) : (∑ i ∈ range (n + 1), i) = n * (n + 1) / 2 := by\n  sorry\n```",
     ])
     r = formalize.formalize(STATEMENT, lean_dir=tmp_path)
     assert r.ok
