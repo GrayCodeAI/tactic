@@ -31,6 +31,8 @@ class OpenAICompatibleProvider:
         signal: CancellationToken | None = None,
         session_id: str | None = None,
     ) -> AsyncIterator:
+        import asyncio
+
         if signal and signal.is_cancelled():
             return
         ov_messages = [{"role": "system", "content": system}]
@@ -40,7 +42,8 @@ class OpenAICompatibleProvider:
             elif isinstance(m, dict):
                 ov_messages.append(m)
         try:
-            resp = self._client.chat.completions.create(
+            resp = await asyncio.to_thread(
+                self._client.chat.completions.create,
                 model=model,
                 messages=ov_messages,
                 temperature=0.2,

@@ -147,11 +147,60 @@ def resolved_model_name() -> str:
     return DEFAULT_MODEL
 
 
+_MODEL_PROVIDER_HINTS = (
+    ("gpt", "openai"),
+    ("claude", "anthropic"),
+    ("qwen", "openai_compatible"),
+    ("deepseek", "openai_compatible"),
+    ("mistral", "openai_compatible"),
+)
+
+
 def profile_for(name: str) -> ModelProfile | None:
-    """The profile whose name equals ``name``, or None."""
+    """The profile whose name equals ``name``, or None.
+
+    Resolution: persisted profiles first; when absent, a matching
+    ``ProviderConfig`` (providers.json / builtins) is folded into a profile
+    so ``llm.model()``/``active_profile()`` read ProviderSettings
+    (Phase 13 exit criterion: providers.json supersedes legacy models.json).
+    Exact provider names win; otherwise a model-prefix hint (gpt→openai,
+    claude→anthropic, …) maps the model name onto a provider (tau parity:
+    model choice resolves its provider config).
+    """
     for profile in load_profiles():
         if profile.name == name:
             return profile
+    pc = _provider_config_for_model(name)
+    if pc is not None:
+        return ModelProfile(
+            name=pc.name,
+            base_url=pc.base_url,
+            api_key=pc.api_key or "",
+            context_window=pc.max_context_window,
+        )
+    return None
+
+
+def _provider_config_for_model(name: str):
+    try:
+        from .provider_config import load_provider_settings, provider_config_from_name
+    except Exception:  # noqa: BLE001 — provider store is optional
+        return None
+    # Exact provider-name match across persisted + built-in configs.
+    pc = provider_config_from_name(name)
+    if pc is not None:
+        return pc
+    # Model-family hints resolve through USER persisted settings only, so
+    # built-in defaults never override an env OPENAI_BASE_URL endpoint.
+    lowered = name.lower()
+    for prefix, kind in _MODEL_PROVIDER_HINTS:
+        if lowered.startswith(prefix):
+            for cfg in load_provider_settings():
+                if (kind == "anthropic" and cfg.kind == "anthropic") or (
+                    kind == "openai_compatible" and cfg.kind != "anthropic"
+                ):
+                    return cfg
+            break
     return None
 
 
