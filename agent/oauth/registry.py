@@ -1,4 +1,4 @@
-"""OAuth provider registry — Tau oauth_registry.py port, lean-adapted.
+"""OAuth provider registry — Tau oauth_registry.py port (Tau 37a9e43 src/tau_coding/oauth_registry.py), lean-adapted.
 
 Maintains a global registry of named ``OAuthProvider`` implementations so
 commands like ``/login <provider>`` can dispatch dynamically. Three built-ins

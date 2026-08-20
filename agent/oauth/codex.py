@@ -1,4 +1,4 @@
-"""OpenAI Codex PKCE OAuth — Tau oauth.py port, lean-adapted.
+"""OpenAI Codex PKCE OAuth — Tau oauth.py port (Tau 37a9e43 src/tau_coding/oauth.py), lean-adapted.
 
 Full AuthorizationCode + PKCE flow for ChatGPT Codex subscriptions:
 

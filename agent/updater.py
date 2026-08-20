@@ -1,4 +1,4 @@
-"""Self-updater — Tau updater.py port, lean-adapted.
+"""Self-updater — Tau updater.py port (Tau 37a9e43 src/tau_coding/updater.py), lean-adapted.
 
 Installs the latest ``lean-prover`` (or a pinned version) by upgrading the
 package with whichever Python tool is available (uv > pipx > pip). The

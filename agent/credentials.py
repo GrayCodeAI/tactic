@@ -1,4 +1,4 @@
-"""Credential storage — Tau credentials.py port, lean-adapted.
+"""Credential storage — Tau credentials.py port (Tau 37a9e43 src/tau_coding/credentials.py), lean-adapted.
 
 ``FileCredentialStore`` persists OAuth credentials (per-provider
 ``OAuthCredential``) in ``~/.prover/credentials`` (JSON, chmod 0600).

@@ -1,4 +1,4 @@
-"""JSON conversation renderer — Tau rendering/json.py port.
+"""JSON conversation renderer — Tau rendering/json.py port (Tau 37a9e43 src/tau_coding/rendering/json.py).
 
 Renders a typed ``AgentMessage`` conversation as a JSON lines transcript
 (one object per message, pi-compatible), plus the flat prover event records.

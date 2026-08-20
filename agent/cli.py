@@ -1,4 +1,4 @@
-"""Coding CLI — Tau cli.py port, lean-adapted (dispatch layer).
+"""Coding CLI — Tau cli.py port (Tau 37a9e43 src/tau_coding/cli.py), lean-adapted (dispatch layer).
 
 A thin argparse entry point for the Tau-style coding facade:
 

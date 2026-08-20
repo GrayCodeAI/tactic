@@ -1,4 +1,4 @@
-"""TUI display state — Tau tui/state.py port, lean-adapted.
+"""TUI display state — Tau tui/state.py port (Tau 37a9e43 src/tau_coding/tui/state.py), lean-adapted.
 
 Centralizes chat-display batching the TUI needs: per-turn tool-call lists,
 grouped consecutive tool calls (one line per batch), incremental tool-result

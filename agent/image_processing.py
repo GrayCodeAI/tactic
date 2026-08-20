@@ -1,4 +1,4 @@
-"""Bounded image normalization — Tau image_processing.py port, lean-shim.
+"""Bounded image normalization — Tau image_processing.py port (Tau 37a9e43 src/tau_coding/image_processing.py), lean-shim.
 
 Lean proofs don't attach images, but the TUI paste/file-drop path can carry
 them.  This port keeps Tau's constants and normalizer; when Pillow is not

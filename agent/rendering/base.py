@@ -1,4 +1,4 @@
-"""Render options — Tau rendering/base.py port."""
+"""Render options — Tau rendering/base.py port (Tau 37a9e43 src/tau_coding/rendering/base.py)."""
 
 from __future__ import annotations
 

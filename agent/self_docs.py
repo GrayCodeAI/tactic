@@ -1,4 +1,4 @@
-"""Self-help documentation — Tau self_docs.py port.
+"""Self-help documentation — Tau self_docs.py port (Tau 37a9e43 src/tau_coding/self_docs.py).
 
 A compact help text surfaced by ``/help`` in the TUI and ``--help`` fallbacks.
 """

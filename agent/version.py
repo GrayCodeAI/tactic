@@ -1,4 +1,4 @@
-"""Package version — Tau version.py port.
+"""Package version — Tau version.py port (Tau 37a9e43 src/tau_coding/version.py).
 
 Reads the version from pyproject.toml so a single source of truth stays put.
 Falls back to a static string when the file is unreadable (e.g. installed

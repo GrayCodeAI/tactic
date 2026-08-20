@@ -1,4 +1,4 @@
-"""Plain-text conversation renderer — Tau rendering/plain.py port.
+"""Plain-text conversation renderer — Tau rendering/plain.py port (Tau 37a9e43 src/tau_coding/rendering/plain.py).
 
 No colors, no Rich: just ``role: text`` lines with optional tool-call
 annotation. Used for piped output and the ``--output text`` CLI path.

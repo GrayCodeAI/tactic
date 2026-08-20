@@ -1,4 +1,4 @@
-"""Update checker — Tau update_check.py port, lean-adapted.
+"""Update checker — Tau update_check.py port (Tau 37a9e43 src/tau_coding/update_check.py), lean-adapted.
 
 Polls PyPI for the newest released ``lean-prover`` version and caches the
 result under ``releases.json`` in the config dir so repeated startups don't

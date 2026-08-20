@@ -1,4 +1,4 @@
-"""Coding session substrate — Tau tau_coding/session.py port, lean-adapted.
+"""Coding session substrate — Tau tau_coding/session.py port (Tau 37a9e43 src/tau_coding/session.py), lean-adapted.
 
 ``CodingSession.load(config)`` replicates Tau's load ordering:
 

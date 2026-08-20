@@ -1,4 +1,4 @@
-"""Extension loader — Tau extensions/loader.py port, lean-adapted.
+"""Extension loader — Tau extensions/loader.py port (Tau 37a9e43 src/tau_coding/extensions/loader.py), lean-adapted.
 
 Scans the configured extension dirs plus any extra paths and imports each
 ``*.py`` (or ``*/__init__.py`` for package extensions) as an isolated module.

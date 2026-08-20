@@ -1,4 +1,4 @@
-"""Durable provider configuration — Tau provider_config.py port, lean-adapted.
+"""Durable provider configuration — Tau provider_config.py port (Tau 37a9e43 src/tau_coding/provider_config.py), lean-adapted.
 
 A ``ProviderConfig`` describes how to reach one inference provider (endpoint,
 auth, compat flags).  Configs persist to ``providers.json`` under

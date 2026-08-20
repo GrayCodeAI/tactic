@@ -1,4 +1,4 @@
-"""Anthropic device-code OAuth — Tau oauth_anthropic.py port, lean-adapted.
+"""Anthropic device-code OAuth — Tau oauth_anthropic.py port (Tau 37a9e43 src/tau_coding/oauth_anthropic.py), lean-adapted.
 
 Anthropic's Claude Desktop OAuth is an OAuth 2.0 device-authorization flow.
 This port requests a device code from Anthropic's token endpoint, displays

@@ -1,4 +1,4 @@
-"""Markdown transcript renderer — Tau rendering/transcript.py port.
+"""Markdown transcript renderer — Tau rendering/transcript.py port (Tau 37a9e43 src/tau_coding/rendering/transcript.py).
 
 Renders a typed ``AgentMessage`` conversation as a markdown transcript:
 user/assistant turns as fenced sections, tool calls as ``**tool** args``

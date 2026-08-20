@@ -1,4 +1,4 @@
-"""RPC server — Tau rpc.py port, lean-adapted.
+"""RPC server — Tau rpc.py port (Tau 37a9e43 src/tau_coding/rpc.py), lean-adapted.
 
 Two transports coexist:
 

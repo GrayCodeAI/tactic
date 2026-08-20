@@ -1,4 +1,4 @@
-"""GitHub Copilot device-code OAuth — Tau oauth_github_copilot.py port, lean-adapted.
+"""GitHub Copilot device-code OAuth — Tau oauth_github_copilot.py port (Tau 37a9e43 src/tau_coding/oauth_github_copilot.py), lean-adapted.
 
 Copilot's OAuth flow is device-code based with a ``copilot_internal/v2/token``
 exchange. This port requests a device code from GitHub, displays the user code

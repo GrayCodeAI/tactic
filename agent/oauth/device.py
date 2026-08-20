@@ -1,4 +1,4 @@
-"""RFC 8628 device-code polling — Tau oauth_device.py port.
+"""RFC 8628 device-code polling — Tau oauth_device.py port (Tau 37a9e43 src/tau_coding/oauth_device.py).
 
 ``poll_oauth_device_code`` drives a device-flow token poll loop: takes a
 device-code response dict and a ``fetch()`` awaitable that performs one token

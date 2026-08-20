@@ -1,4 +1,4 @@
-"""File-editing tools — Tau tau_coding/tools.py port, lean-adapted.
+"""File-editing tools — Tau tau_coding/tools.py port (Tau 37a9e43 src/tau_coding/tools.py), lean-adapted.
 
 Ports the subset of Tau's coding tools the session needs: read (head/tail
 truncation), edit (exact match, overlap + duplicate checks, unified patch),

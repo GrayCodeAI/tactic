@@ -1,4 +1,4 @@
-"""Extension runtime — Tau extensions/runtime.py port, lean-adapted.
+"""Extension runtime — Tau extensions/runtime.py port (Tau 37a9e43 src/tau_coding/extensions/runtime.py), lean-adapted.
 
 ``ExtensionRuntime`` dispatches extension lifecycle: load paths, emit
 session-start events to hooks, compose extension tools around builtins,

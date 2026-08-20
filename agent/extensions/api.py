@@ -1,4 +1,4 @@
-"""Extension API surface — Tau extensions/api.py port, lean-adapted.
+"""Extension API surface — Tau extensions/api.py port (Tau 37a9e43 src/tau_coding/extensions/api.py), lean-adapted.
 
 Provides the contract extensions code against: ``ExtensionContext`` (the
 object passed to ``setup()`` / the registry), ``ExtensionApi`` (its public

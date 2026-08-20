@@ -1,4 +1,4 @@
-"""TUI event adapter — Tau tui/adapter.py port.
+"""TUI event adapter — Tau tui/adapter.py port (Tau 37a9e43 src/tau_coding/tui/adapter.py).
 
 Maps ``AgentEvent`` instances from the harness/run_agent_loop into chat
 items the TUI can display, threading them through ``TuiState`` for

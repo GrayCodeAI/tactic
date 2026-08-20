@@ -1,4 +1,4 @@
-"""Session entry tree — Tau session/entries.py port, lean-adapted."""
+"""Session entry tree — Tau session/entries.py port (Tau 37a9e43 src/tau_agent/session/entries.py), lean-adapted."""
 
 from __future__ import annotations
 
