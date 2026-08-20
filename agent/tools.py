@@ -18,6 +18,7 @@ class ToolResult:
     content: str
     details: dict = field(default_factory=dict)
     is_error: bool = False
+    added_tool_names: list[str] | None = None
 
 
 AgentToolResult = ToolResult

@@ -168,10 +168,34 @@ class AgentHarness:
         signal = SimpleCancellationToken()
         self._current_signal = signal
         try:
-            # lean-adapted: repair not needed for dict history, but keep hook
-            for event in []:  # stub: lean prover uses prove() not run_agent_loop
-                await self._notify(event)  # type: ignore
-                yield event
+            try:
+                from .loop import run_agent_loop
+                from .tool_history import repair_tool_history
+
+                self._append_interrupted_tool_results()
+                repaired = repair_tool_history(self._messages)
+                if getattr(repaired, "messages", None) is not None:
+                    self._messages = list(repaired.messages)
+                async for event in run_agent_loop(
+                    provider=self._config.provider,
+                    model=self._config.model,
+                    system=self._config.system,
+                    messages=self._messages,
+                    tools=self._config.tools,
+                    prompts=prompts,
+                    max_turns=self._config.max_turns,
+                    signal=signal,
+                    session_id=self._config.session_id,
+                    get_steering_messages=self._drain_steering_messages,
+                    get_follow_up_messages=self._drain_follow_up_messages,
+                    before_tool_call=self._config.before_tool_call,
+                    after_tool_call=self._config.after_tool_call,
+                ):
+                    await self._notify(event)
+                    yield event
+            except ImportError:
+                for prompt in prompts:
+                    self._messages.append(prompt)
         finally:
             if self._current_signal is signal:
                 self._current_signal = None

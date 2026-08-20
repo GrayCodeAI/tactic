@@ -1,9 +1,8 @@
-"""Canonical filesystem paths for prover user and project data (tau paths.py port).
+"""Canonical filesystem paths — Tau paths.py extension, lean-adapted.
 
-All env overrides funnel through `ProverPaths` so dir plumbing lives in one
-place.  Precedence: `PROVER_*_DIR` env var > `PROVER_CONFIG_DIR` override >
-`~/.prover` default.  Project resources are `Path.cwd()/.prover/<kind>` and
-win over user-level ones (existing prompt-template behavior preserved).
+Adds ``TauPaths`` (XDG-style, ``~/.tau``) alongside the existing
+``ProverPaths`` (``~/.prover``).  Both coexist so lean's prover path and
+Tau's generic path can be used from the same process.
 """
 
 from __future__ import annotations
@@ -15,47 +14,62 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class ProverPaths:
-    """Resolved prover filesystem locations."""
-
     home: Path = field(default_factory=lambda: Path.home() / ".prover")
     agents_home: Path = field(default_factory=lambda: Path.home() / ".agents")
 
     @property
     def config_dir(self) -> Path:
-        """Dir holding all durable user data (PROVER_CONFIG_DIR overrides home)."""
         override = os.environ.get("PROVER_CONFIG_DIR")
         return Path(override) if override else self.home
 
     @property
     def sessions_dir(self) -> Path:
-        """User-level proof session records."""
         override = os.environ.get("PROVER_SESSIONS_DIR")
         return Path(override) if override else self.home / "sessions"
 
     @property
     def prompts_dir(self) -> Path:
-        """User-level prompt templates."""
         override = os.environ.get("PROVER_PROMPTS_DIR")
         return Path(override) if override else self.config_dir / "prompts"
 
     @property
     def themes_dir(self) -> Path:
-        """User-level TUI themes."""
         override = os.environ.get("PROVER_THEMES_DIR")
         return Path(override) if override else self.config_dir / "themes"
 
     @property
     def logs_dir(self) -> Path:
-        """User-level diagnostic log directory."""
         override = os.environ.get("PROVER_LOGS_DIR")
         return Path(override) if override else self.config_dir / "logs"
 
     @property
     def project_prompts_dir(self) -> Path:
-        """Project-local prompt templates (cwd wins over user level)."""
         return Path.cwd() / ".prover" / "prompts"
 
     @property
     def project_themes_dir(self) -> Path:
-        """Project-local TUI themes."""
         return Path.cwd() / ".prover" / "themes"
+
+
+@dataclass(frozen=True, slots=True)
+class TauPaths:
+    """XDG-style generic agent paths (tau TauPaths)."""
+
+    home: Path = field(default_factory=lambda: Path.home() / ".tau")
+    config_dir: Path = field(default_factory=lambda: Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tau")
+
+    @property
+    def sessions_dir(self) -> Path:
+        return self.home / "sessions"
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.home / "logs"
+
+    @property
+    def credentials_path(self) -> Path:
+        return self.home / "credentials"
+
+    @property
+    def trust_path(self) -> Path:
+        return self.home / "trust.json"

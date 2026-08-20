@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 def _default_dir() -> Path:
-    from .paths import ProverPaths
+    from ..paths import ProverPaths
 
     return ProverPaths().sessions_dir
 
