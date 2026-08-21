@@ -7,3 +7,4 @@ lean/build/
 lean/tmp/
 report.json
 .env
+.pytest_cache/

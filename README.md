@@ -262,10 +262,6 @@ leaderboard.json    local score history (prover leaderboard; served by lean-prov
 - [x] LSP `runTactic` primitive (RPC only present on Lean ≥ v4.22; returns None on our pinned v4.20 — verified against the real server)
 - [x] Full-file dynamic mode (`--full-file`: model writes whole files; statement enforced) + adaptive step budget (`--adaptive`)
 
-## Ecosystem sync
-
-Full Lean/AI/math landscape audit (27 sources, deferred implementation) is tracked in **[docs/LEAN_SYNC.md](docs/LEAN_SYNC.md)** — covers Lean 4.34 `grind`/`mvcgen`/Comparator, Mathlib Initiative/Community (300+ tactics, Moogle/SorryDB), Harmonic Aristotle (IMO gold/MCTS), Math Inc Gauss/OpenGauss + FormalQualBench, EPFL LeanFlow/Probe/Interact, DeepSeek-Prover V2 + LeanDojo + PutnamBench 640 + FrontierMath + Formal Conjectures + LeanCopilot, plus institutes (AIM/IAS/SLMath/ICERM/Fields/Clay/Simons), provers (Rocq/Isabelle/Metamath/HOL Light) and 12-paper SOTA table.
-
 ## Not yet verified / deferred (honest scope)
 
 - Live-model verification of best-of-N, retrieval, planning, routing and
@@ -277,7 +273,7 @@ Full Lean/AI/math landscape audit (27 sources, deferred implementation) is track
 - Full MiniF2F score (244 test problems) has not been run through the agent —
   the statements are type-checked (244/244 compile on Mathlib v4.20.0) but
   proving them is a long model run.
-- Mathlib bump to `v4.34` (`grind` tactic) + toolchain `v4.20→v4.34`, real RL fine-tuning, and upstream contributions are deferred — see **docs/LEAN_SYNC.md §0-§7u** for phased plan.
+- Mathlib bump to `v4.34` (`grind` tactic) + toolchain `v4.20→v4.34`, real RL fine-tuning, and upstream contributions are deferred.
 
 ## Model profiles (`/models` in the TUI)
 
