@@ -141,3 +141,38 @@ def test_acl_denies_never_crashes_server(monkeypatch, tmp_path) -> None:
     permissions.write_text("{not valid json]")
     monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path))
     assert mcp._acl_denies("prove_theorem", {}) is False
+
+
+# --------------------------------------------------------------------------- loop ACL gate (step C)
+
+
+@pytest.mark.anyio
+async def test_acl_before_tool_call_blocks_deny_rule(tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from agent.permissions import PermissionStore, acl_before_tool_call
+
+    store = PermissionStore(path=tmp_path / "permissions.json")
+    store.add_rule("rm_tool", "dangerous", allow=False)
+    gate = acl_before_tool_call(store)
+
+    blocked, reason = await gate(
+        SimpleNamespace(name="rm_tool", arguments={"path": "dangerous entry"})
+    )
+    assert blocked is True
+    assert "permission denied" in reason
+
+    not_blocked, _ = await gate(SimpleNamespace(name="ls_tool", arguments={}))
+    assert not_blocked is False
+
+
+@pytest.mark.anyio
+async def test_acl_before_tool_call_open_by_default(tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from agent.permissions import PermissionStore, acl_before_tool_call
+
+    store = PermissionStore(path=tmp_path / "permissions.json")
+    gate = acl_before_tool_call(store)
+    blocked, _ = await gate(SimpleNamespace(name="anything", arguments={"x": 1}))
+    assert blocked is False

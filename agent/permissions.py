@@ -151,4 +151,27 @@ class PermissionStore:
         return "deny"
 
 
+def acl_before_tool_call(store: PermissionStore | None = None):
+    """Return an async ``before_tool_call`` hook for the agent loop (step C).
+
+    ``loop.run_agent_loop`` accepts a ``before_tool_call(call) -> (blocked,
+    reason)`` callback invoked before each tool runs. This builds one from the
+    ACL: a matching **deny** rule (exact tool + argument-substring pattern)
+    blocks the call with an explanatory reason; everything else is allowed, so
+    the gate never breaks tooling that has no explicit deny rule.
+    """
+    import json
+
+    if store is None:
+        store = PermissionStore()
+
+    async def gate(call):
+        args = json.dumps(call.arguments, sort_keys=True, ensure_ascii=False)
+        if store.lookup(call.name, args) == "deny":
+            return True, f"permission denied for tool {call.name!r} by ACL"
+        return False, None
+
+    return gate
+
+
 _LOCK = threading.Lock()

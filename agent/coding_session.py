@@ -17,6 +17,7 @@ theorem proving (``agent/prover_loop.py``); this facade is additive.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,7 @@ class CodingSessionConfig:
     extension_paths: tuple[Path, ...] = ()
     custom_prompt: str | None = None
     thinking_level: str = "off"
+    before_tool_call: Callable | None = None
 
     resolved_tools: list[dict] | None = None
     context_files: list[dict[str, str]] | None = None
@@ -122,6 +124,7 @@ class CodingSession:
                 tools=_harness_tools(config.resolved_tools),
                 max_turns=config.max_turns,
                 session_id=config.session_id,
+                before_tool_call=config.before_tool_call or _acl_hook(),
                 after_tool_call=_after_tool_call,
             )
         )
@@ -174,6 +177,13 @@ async def _after_tool_call(call, result, is_error):
     if result is not None and getattr(result, "is_error", False):
         return result, True
     return result, is_error
+
+
+def _acl_hook():
+    """Resolve the coding loop's per-tool ACL gate (default before_tool_call)."""
+    from .permissions import acl_before_tool_call
+
+    return acl_before_tool_call()
 
 
 def _provider_from_config(config: ProviderConfig | None):

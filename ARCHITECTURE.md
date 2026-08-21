@@ -52,7 +52,7 @@ files, the god-class TUI, the fat CLI dispatcher).
 | 2 | God-class TUI | `tui.py` 2 280 LOC | open |
 | 3 | Fat CLI dispatcher | `main.py` 725 LOC | open |
 | 4 | Engine reached ad hoc by 8 modules | `coding_session`, `coding_tools`, `loop`, `main`, `rpc`, `system_prompt`, `tui_adapter`, `tui` | open (facade thin end) |
-| 5 | ACL gate only on MCP | `mcp.py` | open |
+| 5 | ACL gate only on MCP | `mcp.py` | **done** (local loop gate, next commit) |
 
 ---
 
@@ -147,7 +147,13 @@ no functional gain, since the facade already routes every surface through the
 one canonical engine. Creating `engine/` is deferred and only worth it if we
 later want to bound `prover_loop.py`'s size (currently 739 LOC).
 
+**Step C — DONE.** The per-tool ACL now gates **local** tool invocation too, not
+just MCP. `permissions.acl_before_tool_call()` builds a `before_tool_call` hook
+(deny rules block; everything else open by default) wired as the default in the
+coding-harness construction (`coding_session`), so the `loop.run_agent_loop`
+path enforces the same ACL as the MCP server. Verified: 36 loop/permissions +
+441 fast tests, ruff clean.
+
 **Next (by value):** Step **D** (surfaces call a stable core API, not engine
-internals — mostly done via the facade), then **C** (extend the ACL gate beyond
-MCP to local sensitive tools), then **B** (extract the TUI into a `tui/`
-package). Steps **E/F** (ports & adapters, robustness) after that.
+internals — mostly done via the `loop.py` facade), then **B** (extract the TUI
+into a `tui/` package). Steps **E/F** (ports & adapters, robustness) after that.
