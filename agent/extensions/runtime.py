@@ -44,7 +44,6 @@ class ExtensionRuntime:
         self.ui: UiBridge = ui or NullUiBridge()
         self.session = session
         self.extensions: list[LoadedExtension] = []
-        self.failure_reports: dict[str, bool] = {}
         self.contexts: dict[str, ExtensionContext] = {}
         self.generation = 0
 
@@ -101,16 +100,6 @@ class ExtensionRuntime:
                 merged.update(context.tools)
         return merged
 
-    @property
-    def renderers(self) -> dict[str, Any]:
-        merged: dict[str, Any] = {}
-        for ext in self.extensions:
-            context = self.contexts.get(ext.name)
-            if context is not None:
-                for name, view in context.renderers.items():
-                    merged[name] = view
-        return merged
-
     def compose_tools(self, builtin_tools: list[dict]) -> list[dict]:
         """Builtins first, then extension-registered tools (tau compose_tools)."""
         merged = list(builtin_tools)
@@ -142,9 +131,6 @@ class ExtensionRuntime:
             if name not in builtin_names
         }
 
-    def emit_session_start_event(self) -> None:
-        self._emit_event({"type": "session_start"})
-
     def emit_event(self, event: dict) -> bool:
         """Broadcast an arbitrary event to extension hooks."""
         return self._emit_event(event)
@@ -169,12 +155,6 @@ class ExtensionRuntime:
             except Exception:  # noqa: BLE001
                 self.ui.message(f"extension hook error ({ext.name})")
         return handled
-
-    def agent_event_types(self) -> tuple[str, ...]:
-        return AGENT_EVENT_TYPES
-
-    def lifecycle_event_types(self) -> tuple[str, ...]:
-        return LIFECYCLE_EVENT_TYPES
 
     def run_input_hooks(self, text: str) -> InputHookOutcome:
         """Run all extension input hooks, honoring transform/handled signals."""
@@ -205,18 +185,3 @@ class ExtensionRuntime:
             if isinstance(outcome, str):
                 current = outcome
         return InputHookOutcome(text=current, transform=current if current != text else None)
-
-    def render_custom_message(self, message_type: str, message: Any) -> Any | None:
-        """Render a custom message via the registered renderer (dedupe on failure)."""
-        view = self.renderers.get(message_type)
-        if view is None:
-            return None
-        try:
-            return view.render(message)
-        except Exception:  # noqa: BLE001
-            if not self.failure_reports.get(message_type):
-                self.ui.message(
-                    f"extension renderer for '{message_type}' failed; future failures suppressed"
-                )
-                self.failure_reports[message_type] = True
-            return None

@@ -103,15 +103,6 @@ class AgentHarness:
     def pending_message_count(self) -> int:
         return self.queued_messages.count
 
-    def has_queued_messages(self) -> bool:
-        return bool(self._steering_queue or self._follow_up_queue)
-
-    def append_message(self, message: AgentMessage) -> None:  # type: ignore
-        self._messages.append(message)
-
-    def replace_messages(self, messages: Sequence[AgentMessage]) -> None:  # type: ignore
-        self._messages = list(messages)
-
     def subscribe(self, listener: EventListener) -> Callable[[], None]:
         self._listeners.append(listener)
 
@@ -139,18 +130,6 @@ class AgentHarness:
         self._follow_up_queue.append(message)
         return self.queued_messages
 
-    def clear_queues(self) -> QueuedMessages:
-        snapshot = self.queued_messages
-        self._steering_queue.clear()
-        self._follow_up_queue.clear()
-        return snapshot
-
-    def pop_latest_follow_up(self) -> AgentMessage | None:  # type: ignore
-        return self._follow_up_queue.pop() if self._follow_up_queue else None
-
-    def pop_latest_steering(self) -> AgentMessage | None:  # type: ignore
-        return self._steering_queue.pop() if self._steering_queue else None
-
     def prompt_message(self, message: AgentMessage) -> AsyncIterator[AgentEvent]:  # type: ignore
         self._ensure_not_running()
         self._running = True
@@ -158,11 +137,6 @@ class AgentHarness:
 
     def prompt(self, content: str) -> AsyncIterator[AgentEvent]:  # type: ignore
         return self.prompt_message(UserMessage(content=content))  # type: ignore
-
-    def continue_(self) -> AsyncIterator[AgentEvent]:  # type: ignore
-        self._ensure_not_running()
-        self._running = True
-        return self._run()
 
     async def _run(self, *, prompts: Sequence[AgentMessage] = ()) -> AsyncIterator[AgentEvent]:  # type: ignore
         signal = SimpleCancellationToken()

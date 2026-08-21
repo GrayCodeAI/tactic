@@ -23,10 +23,6 @@ class TauResourcePaths:
     themes_dirs: tuple[Path, ...] = ()
     extensions_dirs: tuple[Path, ...] = ()
 
-    @property
-    def all_dirs(self) -> tuple[Path, ...]:
-        return self.skills_dirs + self.templates_dirs + self.themes_dirs
-
 
 def discover_resources(cwd: Path | None = None) -> TauResourcePaths:
     cwd = cwd or Path.cwd()
@@ -38,12 +34,3 @@ def discover_resources(cwd: Path | None = None) -> TauResourcePaths:
         themes_dirs=(project / "themes", paths.config_dir / "themes"),
         extensions_dirs=(project / "extensions", paths.config_dir / "extensions"),
     )
-
-
-def discover_system_prompt_resources(cwd: Path | None = None) -> dict[str, Path | None]:
-    """Discover AGENTS.md and .prover.md context files (tau parity)."""
-    cwd = cwd or Path.cwd()
-    return {
-        "agents_md": cwd / "AGENTS.md" if (cwd / "AGENTS.md").exists() else None,
-        "prover_md": cwd / ".prover.md" if (cwd / ".prover.md").exists() else None,
-    }

@@ -25,7 +25,6 @@ from uuid import uuid4
 
 from .context_window import ContextUsageEstimate, estimate_context_usage
 from .harness import AgentHarness, AgentHarnessConfig
-from .messages import AgentMessage
 from .provider import ModelProvider
 from .provider_config import ProviderConfig, provider_config_from_name
 from .resources import TauResourcePaths, discover_resources
@@ -148,12 +147,6 @@ class CodingSession:
                 self.harness.config.system, list(self.harness.messages)
             )
         return self._context_usage
-
-    def invalidate_context_usage(self) -> None:
-        self._context_usage = None
-
-    def queue_steering_message(self, message: AgentMessage) -> None:
-        self.harness.steer_message(message)
 
     def append_custom_entry(self, kind: str, payload: dict[str, Any] | None = None) -> None:
         self._pending_entries.append({"type": "custom", "kind": kind, "payload": payload or {}})

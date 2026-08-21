@@ -128,8 +128,6 @@ def _load_builtin_themes() -> None:
 
 _load_builtin_themes()
 
-TAU_DARK_THEME = BUILTIN_TUI_THEMES["prover-dark"]  # default, tau naming parity
-
 
 def themes_dir() -> Path:
     from .paths import ProverPaths

@@ -13,8 +13,6 @@ from typing import Any
 CHARS_PER_TOKEN = 4
 MESSAGE_OVERHEAD_TOKENS = 4
 TOOL_CALL_OVERHEAD_TOKENS = 16
-SUMMARY_MESSAGE_CHAR_LIMIT = 500
-COMPACTION_SUMMARY_PREFIX = "Previous conversation summary:\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,11 +22,6 @@ class ContextUsageEstimate:
     message_tokens: int
     tool_tokens: int
     message_count: int
-    provider_tokens: int = 0
-
-    @property
-    def uses_provider_usage(self) -> bool:
-        return self.provider_tokens > 0
 
 
 def estimate_text_tokens(text: str) -> int:

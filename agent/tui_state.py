@@ -37,10 +37,6 @@ class BatchedGroup:
     def names(self) -> tuple[str, ...]:
         return tuple(c.name for c in self.calls)
 
-    @property
-    def all_done(self) -> bool:
-        return all(c.status in ("done", "error", "cancelled") for c in self.calls)
-
 
 class TuiState:
     """Batched chat-display state for one streaming session (tau TuiState)."""

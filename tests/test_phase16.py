@@ -1,9 +1,8 @@
-"""Phase 16 tests — TUI state/adapter, rendering, CLI, update/updater.
+"""Phase 16 tests — TUI state, rendering, CLI, update/updater.
 
 Covers the Tau-parity surfaces added in Phase 16: TuiState batching,
-TuiEventAdapter AgentEvent mapping, conversation renderers, markdown
-session export with cost table, the coding CLI dispatch, and the
-version/update-check primitives.
+conversation renderers, markdown session export with cost table, the
+coding CLI dispatch, and the version/update-check primitives.
 """
 
 from __future__ import annotations
@@ -12,19 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from agent.events import (
-    AgentEndEvent,
-    AgentStartEvent,
-    MessageEndEvent,
-    MessageStartEvent,
-    ToolExecutionEndEvent,
-    ToolExecutionStartEvent,
-    TurnStartEvent,
-)
 from agent.messages import UserMessage
 from agent.rendering import RenderOptions, render_conversation_transcript
-from agent.tools import ToolResult
-from agent.tui_adapter import TuiEventAdapter
 from agent.tui_state import TuiState
 
 # ---------------------------------------------------------------- TuiState
@@ -76,59 +64,6 @@ def test_tui_state_custom_markup_failure_dedupe() -> None:
     assert state.resolve_custom_markup("chart", {}) is None
     assert calls["n"] == 2
     assert state.custom_failures_reported["chart"] is True
-
-
-# ----------------------------------------------------------- TuiEventAdapter
-
-
-def test_adapter_maps_tool_events_to_items() -> None:
-    adapter = TuiEventAdapter()
-    adapter.handle(AgentStartEvent())
-    adapter.handle(TurnStartEvent())
-    adapter.handle(ToolExecutionStartEvent(tool_call_id="c1", tool_name="read", args={"path": "x"}))
-    adapter.handle(
-        ToolExecutionEndEvent(tool_call_id="c1", tool_name="read", result=ToolResult(content="ok"), is_error=False)
-    )
-    items = adapter.drain()
-    kinds = [i.kind for i in items]
-    assert "tool_line" in kinds
-    assert any(i.kind == "tool_update" and i.style == "success" for i in items)
-    assert adapter.drain() == []
-
-
-def test_adapter_error_message_item() -> None:
-    adapter = TuiEventAdapter()
-    message = UserMessage(content="boom")
-    adapter.handle(MessageStartEvent(message=message))
-    err = ToolExecutionEndEvent(
-        tool_call_id="c1", tool_name="bash", result=ToolResult(content="fail", is_error=True), is_error=True
-    )
-    adapter.handle(ToolExecutionStartEvent(tool_call_id="c1", tool_name="bash", args={}))
-    adapter.handle(err)
-    items = adapter.drain()
-    assert any(i.style == "error" for i in items)
-
-
-def test_adapter_message_end_error_item() -> None:
-    adapter = TuiEventAdapter()
-    from agent.messages import TextContent, ToolResultMessage
-
-    message = ToolResultMessage(
-        tool_call_id="c1", tool_name="bash", content=[TextContent(text="bad")], is_error=True
-    )
-    adapter.handle(MessageEndEvent(message=message))
-    items = adapter.drain()
-    assert items and items[0].kind == "error"
-
-
-def test_adapter_agent_end_reports_error_message() -> None:
-    adapter = TuiEventAdapter()
-    from agent.messages import AssistantMessage
-
-    err_msg = AssistantMessage(content=[], model="m", stop_reason="error", error_message="provider died")
-    adapter.handle(AgentEndEvent(messages=[err_msg]))
-    items = adapter.drain()
-    assert items and items[0].kind == "error" and "provider died" in items[0].text
 
 
 # ---------------------------------------------------------------- rendering

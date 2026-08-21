@@ -26,12 +26,6 @@ class OAuthCredential:
     issued_at: float = 0.0
     extras: dict | None = None
 
-    @property
-    def is_expired(self) -> bool:
-        if self.expires_at is None:
-            return False
-        return time.time() >= self.expires_at - 30.0
-
     def to_dict(self) -> dict:
         data = {
             "provider": self.provider,

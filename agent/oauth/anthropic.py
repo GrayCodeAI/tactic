@@ -86,14 +86,3 @@ async def login_anthropic(
     store = credential_store or FileCredentialStore()
     store.set(credential)
     return credential
-
-
-async def refresh_anthropic(refresh_token_value: str, client_id: str = ANTHROPIC_CLIENT_ID) -> dict | None:
-    return _post_json(
-        ANTHROPIC_TOKEN_URL,
-        {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token_value,
-            "client_id": client_id,
-        },
-    )

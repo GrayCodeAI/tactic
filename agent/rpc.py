@@ -20,22 +20,8 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any
 
 from .mcp import serve as mcp_serve
-
-
-class RPCResult:
-    def __init__(self, result: Any, *, is_error: bool = False) -> None:
-        self.result = result
-        self.is_error = is_error
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "result": self.result,
-            "is_error": self.is_error,
-            "error": "rpc error" if self.is_error else None,
-        }
 
 
 def _handle_frame(req: dict) -> dict:

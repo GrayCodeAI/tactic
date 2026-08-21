@@ -110,25 +110,6 @@ def _exchange_code(code: str, verifier: str, client_id: str) -> dict[str, Any] |
         return None
 
 
-def _refresh_token(refresh_token_value: str, client_id: str) -> dict[str, Any] | None:
-    data = urllib.parse.urlencode(
-        {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token_value,
-            "client_id": client_id,
-        }
-    ).encode()
-    req = Request(f"{OPENAI_CODEX_AUTH_BASE_URL}/oauth/token", data=data, method="POST")
-    req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    try:
-        with urlopen(req, timeout=30) as resp:
-            import json
-
-            return json.loads(resp.read().decode())
-    except Exception:  # noqa: BLE001
-        return None
-
-
 class AuthorizationFlow:
     """Drives one PKCE login round-trip (tau AuthorizationFlow)."""
 
@@ -200,26 +181,3 @@ def login_openai_codex(
     store = credential_store or FileCredentialStore()
     store.set(credential)
     return credential
-
-
-def refresh_openai_codex(
-    credential_store: FileCredentialStore | None = None,
-    client_id: str = OPENAI_CODEX_CLIENT_ID,
-) -> OAuthCredential | None:
-    """Refresh a stored Codex credential using its refresh_token."""
-    store = credential_store or FileCredentialStore()
-    stored = store.get("openai-codex")
-    if stored is None or stored.refresh_token is None:
-        return None
-    token = _refresh_token(stored.refresh_token, client_id)
-    if token is None or not token.get("access_token"):
-        return stored
-    refreshed = OAuthCredential(
-        provider="openai-codex",
-        access_token=str(token["access_token"]),
-        refresh_token=token.get("refresh_token", stored.refresh_token),
-        expires_at=(time.time() + float(token["expires_in"])) if token.get("expires_in") else None,
-        extras=stored.extras,
-    )
-    store.set(refreshed)
-    return refreshed

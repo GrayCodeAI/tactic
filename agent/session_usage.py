@@ -78,10 +78,6 @@ class SessionUsage:
         return sum(item.total_tokens for item in self.requests)
 
     @property
-    def hit_rate(self) -> float | None:
-        return None
-
-    @property
     def total_cost(self) -> float | None:
         costs = [r.estimated_cost for r in self.requests if r.estimated_cost is not None]
         return sum(costs) if costs else None

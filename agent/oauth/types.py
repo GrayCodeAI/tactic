@@ -22,9 +22,6 @@ class OAuthProvider(Protocol):
 
     name: str
 
-    @property
-    def callback_url(self) -> str: ...
-
     async def login(self, prompt_cb: Callable[[OAuthPrompt], Any]) -> Any: ...
 
     async def refresh(self, credential: Any) -> Any | None: ...

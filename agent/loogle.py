@@ -4,14 +4,6 @@ import json
 import os
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True, slots=True)
-class LoogleHit:
-    name: str
-    type: str
-    doc: str = ""
 
 
 def search_loogle(query: str, limit: int = 5, timeout: int = 10) -> list[dict]:

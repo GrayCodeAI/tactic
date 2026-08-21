@@ -46,8 +46,6 @@ FORBIDDEN_KEYS: tuple[str, ...] = (
     "provider",
 )
 
-DEFAULT_FILE = "prover.json"  # <repo>/.prover.json
-
 
 def _find_project_file(cwd: Path | None = None) -> Path | None:
     root = Path(cwd) if cwd is not None else Path.cwd()

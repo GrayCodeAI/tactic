@@ -46,10 +46,6 @@ class ProverPaths:
     def project_prompts_dir(self) -> Path:
         return Path.cwd() / ".prover" / "prompts"
 
-    @property
-    def project_themes_dir(self) -> Path:
-        return Path.cwd() / ".prover" / "themes"
-
 
 @dataclass(frozen=True, slots=True)
 class TauPaths:
@@ -69,7 +65,3 @@ class TauPaths:
     @property
     def credentials_path(self) -> Path:
         return self.home / "credentials"
-
-    @property
-    def trust_path(self) -> Path:
-        return self.home / "trust.json"
