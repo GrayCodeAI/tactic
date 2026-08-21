@@ -67,9 +67,10 @@ def cmd_prove(args: argparse.Namespace) -> int:
 def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: bool = True,
                record_session: bool = True, skip_hammers: bool = False,
                n_attempts: int = 1, full_file: bool = False,
-               adaptive_steps: bool = False) -> tuple[dict, int, float]:
+               adaptive_steps: bool = False, quiet: bool = False) -> tuple[dict, int, float]:
     """Prove a single problem. Returns (result_dict, tokens, cost)."""
-    print(f"[{idx}/{total}] {p['id']}: {p['statement'][:70]}...")
+    if not quiet:
+        print(f"[{idx}/{total}] {p['id']}: {p['statement'][:70]}...")
     r = prove_best_of(p["statement"], n_attempts=n_attempts, max_steps=max_steps,
                       verbose=False, problem_id=p["id"],
                       goal_feedback=goal_feedback, record_session=record_session,
@@ -89,7 +90,8 @@ def _prove_one(p: dict, max_steps: int, idx: int, total: int, goal_feedback: boo
         "attempts": len(r.attempts),
     }
     cost_str = f" cost≈${r.estimated_cost_usd:.6f}" if r.total_tokens else ""
-    print(f"    -> {'PROVED' if r.proved else 'FAILED'} in {r.steps} steps ({r.total_tokens} tokens{cost_str})")
+    if not quiet:
+        print(f"    -> {'PROVED' if r.proved else 'FAILED'} in {r.steps} steps ({r.total_tokens} tokens{cost_str})")
     return result, r.total_tokens, r.estimated_cost_usd
 
 
@@ -106,13 +108,17 @@ def cmd_bench(args: argparse.Namespace) -> int:
 
     goal_feedback = not args.no_goal_feedback
 
+    from .project_defaults import effective_defaults
+
+    quiet = bool(effective_defaults().get("quiet", False))
+
     if args.parallel and args.parallel > 1:
         print(f"Running {len(problems)} problems in parallel (workers={args.parallel})...")
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.parallel) as executor:
             futures = [
                 executor.submit(_prove_one, p, args.max_steps, i, len(problems),
                                 goal_feedback, args.record, args.no_hammers, args.n_attempts,
-                                args.full_file, args.adaptive)
+                                args.full_file, args.adaptive, quiet)
                 for i, p in enumerate(problems, start + 1)
             ]
             for fut in concurrent.futures.as_completed(futures):
@@ -124,7 +130,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
         for i, p in enumerate(problems, start + 1):
             result, tokens, cost = _prove_one(p, args.max_steps, i, len(problems),
                                               goal_feedback, args.record, args.no_hammers,
-                                              args.n_attempts, args.full_file, args.adaptive)
+                                              args.n_attempts, args.full_file, args.adaptive,
+                                              quiet)
             results.append(result)
             total_tokens += tokens
             total_cost += cost
@@ -510,6 +517,29 @@ def cmd_ask(args: argparse.Namespace) -> int:
 
 
 def cli(argv: list[str] | None = None) -> None:
+    ap = _build_parser()
+
+    args = ap.parse_args(argv)
+    if args.cmd is None:
+        return cmd_tui(argparse.Namespace(parallel=1))
+    sys.exit(args.fn(args))
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser; repo-safe project defaults set option defaults.
+
+    Split out from ``cli`` so tests can inspect the parsed defaults without
+    running a command (which would need a live endpoint).
+    """
+    from .project_defaults import effective_defaults
+
+    # Repo-safe committed defaults (.prover.json) become the CLI defaults, so
+    # a repo can pin sane values without touching flags. PROVER_<KEY> env vars
+    # still win via settings if set explicitly by callers.
+    proj = effective_defaults()
+    proj_max_steps = int(proj.get("max_steps", 20))
+    proj_workers = int(proj.get("workers", 1))
+
     ap = argparse.ArgumentParser(
         prog="prover",
         description="Lean 4 proof agent. Run `prover` with no arguments to open the interactive TUI.",
@@ -518,7 +548,7 @@ def cli(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("prove", help="prove a single theorem")
     p.add_argument("statement", help="Lean theorem statement (with proof or sorry)")
-    p.add_argument("--max-steps", type=int, default=20)
+    p.add_argument("--max-steps", type=int, default=proj_max_steps)
     p.add_argument("--n-attempts", type=int, default=1,
                    help="best-of-N: run up to N independent attempts (temperature ramp)")
     p.add_argument("--full-file", action="store_true",
@@ -536,7 +566,7 @@ def cli(argv: list[str] | None = None) -> None:
 
     a = sub.add_parser("ask", help="single theorem request, JSON on stdout (script-friendly)")
     a.add_argument("statement", help="Lean theorem statement (with proof or sorry)")
-    a.add_argument("--max-steps", type=int, default=20)
+    a.add_argument("--max-steps", type=int, default=proj_max_steps)
     a.add_argument("--full-file", action="store_true")
     a.add_argument("--adaptive", action="store_true")
     a.add_argument("--no-goal-feedback", action="store_true")
@@ -545,10 +575,10 @@ def cli(argv: list[str] | None = None) -> None:
 
     b = sub.add_parser("bench", help="run the benchmark suite")
     b.add_argument("--problems", default="benchmark/problems.json")
-    b.add_argument("--max-steps", type=int, default=20)
+    b.add_argument("--max-steps", type=int, default=proj_max_steps)
     b.add_argument("--start", type=int, default=1, help="resume from problem N (1-indexed)")
     b.add_argument("--report", default=None)
-    b.add_argument("--parallel", type=int, default=1, help="number of parallel workers (default=1, sequential)")
+    b.add_argument("--parallel", type=int, default=proj_workers, help="number of parallel workers (default: repo/1, sequential)")
     b.add_argument("--no-goal-feedback", action="store_true",
                    help="disable LSP goal-state feedback")
     b.add_argument("--no-hammers", action="store_true",
@@ -634,8 +664,8 @@ def cli(argv: list[str] | None = None) -> None:
     ft.set_defaults(fn=cmd_finetune)
 
     t = sub.add_parser("tui", help="interactive terminal UI (browse problems, watch proofs)")
-    t.add_argument("-p", "--parallel", type=int, default=1,
-                   help="number of parallel proof workers (default=1)")
+    t.add_argument("-p", "--parallel", type=int, default=proj_workers,
+                   help="number of parallel proof workers (default: repo/1)")
     t.add_argument("--extensions", action="append", default=[],
                    help="extension path (file or dir), repeatable (Tau --extensions parity)")
     t.set_defaults(fn=cmd_tui)
@@ -685,15 +715,12 @@ def cli(argv: list[str] | None = None) -> None:
     lb.add_argument("--run", action="store_true",
                     help="run the benchmark first, then record the score")
     lb.add_argument("--problems", default="benchmark/problems.json")
-    lb.add_argument("--max-steps", type=int, default=20)
+    lb.add_argument("--max-steps", type=int, default=proj_max_steps)
     lb.add_argument("--name", default=None, help="entry name (default: model or env)")
     lb.add_argument("--show", action="store_true", help="only show current leaderboard")
     lb.set_defaults(fn=cmd_leaderboard)
 
-    args = ap.parse_args(argv)
-    if args.cmd is None:
-        return cmd_tui(argparse.Namespace(parallel=1))
-    sys.exit(args.fn(args))
+    return ap
 
 
 if __name__ == "__main__":

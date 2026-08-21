@@ -97,3 +97,47 @@ def test_requires_tool_name(tmp_path) -> None:
     s = _store(tmp_path)
     with pytest.raises(ValueError):
         s.add_rule("   ", "", allow=True)
+
+
+# --------------------------------------------------------------------------- MCP gating
+
+
+def test_acl_denies_blocks_mcp_tool(monkeypatch, tmp_path) -> None:
+    """An explicit deny rule blocks an MCP tool call; open by default otherwise."""
+    from agent import mcp
+
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path))
+    store = PermissionStore(path=tmp_path / "permissions.json")
+    store.add_rule("prove_theorem", "", allow=False)
+    store.save()
+    assert mcp._acl_denies("prove_theorem", {"statement": "theorem t : True := by trivial"}) is True
+    assert mcp._acl_denies("problems", {}) is False
+
+
+def test_acl_denies_open_by_default(monkeypatch, tmp_path) -> None:
+    from agent import mcp
+
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path))
+    assert mcp._acl_denies("prove_theorem", {}) is False
+
+
+def test_acl_denies_pattern_match(monkeypatch, tmp_path) -> None:
+    from agent import mcp
+
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path))
+    store = PermissionStore(path=tmp_path / "permissions.json")
+    store.add_rule("prove_theorem", "hard", allow=False)
+    store.save()
+    assert mcp._acl_denies("prove_theorem", {"statement": "a hard theorem"}) is True
+    assert mcp._acl_denies("prove_theorem", {"statement": "an easy tree"}) is False
+
+
+def test_acl_denies_never_crashes_server(monkeypatch, tmp_path) -> None:
+    from agent import mcp
+
+    # A corrupt store must not raise through the MCP gate.
+    permissions = tmp_path / "permissions.json"
+    permissions.parent.mkdir(parents=True, exist_ok=True)
+    permissions.write_text("{not valid json]")
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path))
+    assert mcp._acl_denies("prove_theorem", {}) is False

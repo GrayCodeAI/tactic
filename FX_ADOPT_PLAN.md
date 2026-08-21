@@ -69,13 +69,24 @@ All six adoptions implemented in Python. **Zig rewrite dropped** (user decision)
 | 6 | Process gate | `AGENTS.md` | done |
 
 **Verification:** `ruff check agent/ tests/` clean; `pytest tests/` fast subset
-382 passed (93 new). The slow LLM/Lean/LSP tests need a live endpoint (
-README notes the configured HF endpoint hangs) and are excluded explicitly.
+437 passed. The slow LLM/Lean/LSP tests need a live endpoint (README notes the
+configured HF endpoint hangs) and are excluded explicitly.
 
-**Notes / later integration (not blocking):**
-- The `/permissions` command is a pure parser (fx-style) — its `CommandResult`
-  flags are ready, but the TUI frontend action (rendering the ACL screen) is not
-  yet wired. The parsing + store are fully unit-tested.
-- `agent/settings.py` and `agent/project_defaults.py` are additive modules with
-  clean APIs; wiring them into `prover_loop.py`/`tui.py` defaults is a follow-up
-  so behaviour of existing flags is untouched.
+**Runtime integration — all wired (2026-08-21):**
+- **MCP ACL enforcement** (`mcp.py`): every `tools/call` is gated through
+  `PermissionStore.lookup()`; an explicit deny rule blocks the call with
+  `isError`. Tools stay open by default, so the gate never breaks existing
+  tooling. Verified end-to-end over real stdio (`prover mcp`).
+- **TUI `/permissions`** (`tui.py`): `list` opens a modal; `remember` /
+  `revoke` / `mode` act on the ACL store and persist. Verified headlessly.
+- **Project defaults honored by the CLI** (`main.py`): `prover prove/bench/
+  ask/leaderboard` and `--parallel` default to committed `max_steps`/`workers`;
+  `quiet` suppresses `bench` progress. Exposed via a testable `_build_parser()`.
+- `prover lean-baseline` happy path still exits 0 with clean stderr after the
+  `cli()` refactor.
+
+**Remaining (documented):** `settings.py` precedence is read only by
+`project_defaults.effective_defaults()` (used by the CLI); the `PROVER_<KEY>`
+env overrides in `agent/settings.py` are available for callers but not yet read
+for every knob across `prover_loop.py`/`tui.py` — existing flags keep their
+behaviour.

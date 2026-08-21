@@ -134,3 +134,52 @@ async def test_unknown_command_does_not_crash() -> None:
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await submit(pilot, "/bads")  # unknown command — must not raise
+
+
+@pytest.mark.anyio
+async def test_permissions_list_shows_modal(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(tmp_path / "config"))
+    app = ProverApp()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        await submit(pilot, "/permissions list")
+        assert isinstance(app.screen, MessageScreen)
+        assert "mode:" in app.screen._body
+        await pilot.press("q")
+        await pilot.pause()
+
+
+@pytest.mark.anyio
+async def test_permissions_remember_writes_store(monkeypatch, tmp_path) -> None:
+    from agent.permissions import PermissionStore
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(config))
+    app = ProverApp()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        await submit(pilot, "/permissions remember deny prove_theorem")
+        await pilot.pause()
+
+    store = PermissionStore(path=config / "permissions.json")
+    rules = store.rules()
+    assert len(rules) == 1
+    rule = next(iter(rules.values()))
+    assert rule["tool"] == "prove_theorem"
+    assert rule["allow"] is False
+
+
+@pytest.mark.anyio
+async def test_permissions_mode_sets_baseline(monkeypatch, tmp_path) -> None:
+    from agent.permissions import PermissionStore
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("PROVER_CONFIG_DIR", str(config))
+    app = ProverApp()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        await submit(pilot, "/permissions mode yolo")
+        await pilot.pause()
+
+    store = PermissionStore(path=config / "permissions.json")
+    assert store.mode == "yolo"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -93,8 +94,6 @@ def test_usage_cli_missing_session(monkeypatch, tmp_path, capsys) -> None:
 
 
 def _fake_result(proved: bool = True):
-    from types import SimpleNamespace
-
     return SimpleNamespace(
         proved=proved,
         steps=3,
@@ -142,3 +141,59 @@ def test_ask_human_prose_to_stderr(monkeypatch, capsys) -> None:
     # prose goes to stderr
     assert "proved=False" in captured.err
     assert rc == 1
+
+
+# --------------------------------------------------------------------------- project-defaults wiring
+
+
+def test_project_max_steps_becomes_cli_default(monkeypatch, tmp_path) -> None:
+    """A committed .prover.json max_steps sets the prove subcommand default."""
+    import json as _json
+
+    (tmp_path / ".prover.json").write_text(_json.dumps({"max_steps": 7}))
+    monkeypatch.chdir(tmp_path)
+    ns = main._build_parser().parse_args(["prove", "theorem t : True := by trivial"])
+    assert ns.max_steps == 7
+
+
+def test_project_workers_becomes_bench_parallel_default(monkeypatch, tmp_path) -> None:
+    import json as _json
+
+    (tmp_path / ".prover.json").write_text(_json.dumps({"workers": 4}))
+    monkeypatch.chdir(tmp_path)
+    ns = main._build_parser().parse_args(["bench"])
+    assert ns.parallel == 4
+    assert ns.max_steps == 20  # built-in floor when repo sets only workers
+
+
+def test_quiet_suppresses_bench_progress(monkeypatch, tmp_path, capsys) -> None:
+    """quiet=true in .prover.json silences per-problem progress in bench."""
+    import json as _json
+
+    (tmp_path / ".prover.json").write_text(_json.dumps({"quiet": True}))
+    monkeypatch.chdir(tmp_path)
+
+    calls: list[dict] = []
+
+    def fake_prove_best_of(*a, **kw):
+        calls.append(kw)
+        r = _fake_result(proved=True)
+        # prove_best_of returns an object with .attempts
+        r2 = SimpleNamespace(**{**vars(r), "attempts": [], "trace": []})
+        return r2
+
+    monkeypatch.setattr(main, "prove_best_of", fake_prove_best_of)
+
+    problems = tmp_path / "problems.json"
+    problems.write_text(_json.dumps([
+        {"id": "p1", "statement": "theorem p1 : 1+1=2 := by norm_num", "difficulty": "trivial"},
+    ]))
+    rc = main.cmd_bench(_ns(problems=str(problems), max_steps=2, start=1, parallel=1,
+                            no_goal_feedback=False, record=True, no_hammers=False,
+                            n_attempts=1, full_file=False, adaptive=False,
+                            report=None, validate=False))
+    out = capsys.readouterr().out
+    assert rc == 0
+    # no per-progress "[1/1] p1" line, but the score summary still prints
+    assert "[1/1] p1" not in out
+    assert "Score: 1/1" in out

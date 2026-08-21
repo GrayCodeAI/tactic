@@ -1561,6 +1561,8 @@ class ProverApp(App):
             self._show_tools()
         if result.update_check_requested:
             self._check_update()
+        if result.permissions_requested:
+            self._handle_permissions(result)
         if result.exit_requested:
             self.exit()
 
@@ -1686,6 +1688,59 @@ class ProverApp(App):
             self.notify(f"update available: {info.current_version} -> {info.latest_version}")
         else:
             self.notify(f"lean-prover {info.current_version} is up to date")
+
+    def _handle_permissions(self, result: CommandResult) -> None:
+        """/permissions — list, remember, revoke or set baseline mode (fx ACL)."""
+        from .permissions import VALID_MODES, PermissionStore
+
+        store = PermissionStore()
+        action = result.permissions_action
+
+        if action == "list" or action is None:
+            rules = store.rules()
+            lines = [f"mode: {store.mode}  (" + ", ".join(VALID_MODES) + ")",
+                     f"rules: {len(rules)}", ""]
+            for rid, r in sorted(rules.items()):
+                dec = "allow" if r.get("allow") else "deny"
+                pat = f" when args contain {r['pattern']!r}" if r.get("pattern") else ""
+                lines.append(f"  {rid}  {dec}  {r['tool']}{pat}")
+            if not rules:
+                lines.append("  (no explicit rules — tools open by default)")
+            self.push_screen(MessageScreen("permissions", "\n".join(lines)))
+            return
+
+        if action == "remember":
+            try:
+                rid = store.add_rule(
+                    result.permissions_tool or "", result.permissions_pattern or "",
+                    bool(result.permissions_allow), note="via /permissions",
+                )
+                store.save()
+            except ValueError as exc:
+                self.notify(f"permissions: {exc}", severity="warning")
+                return
+            verb = "allow" if result.permissions_allow else "deny"
+            self._log(f"permissions: {verb} {result.permissions_tool} → [{rid}]")
+            return
+
+        if action == "revoke":
+            rid = result.permissions_tool or ""
+            if store.remove_rule(rid):
+                store.save()
+                self._log(f"permissions: revoked rule [{rid}]")
+            else:
+                self.notify(f"permissions: no rule with id {rid!r}", severity="warning")
+            return
+
+        if action == "mode":
+            mode = result.permissions_mode or ""
+            if mode not in VALID_MODES:
+                self.notify(f"permissions: invalid mode {mode!r}", severity="warning")
+                return
+            store.mode = mode
+            store.save()
+            self._log(f"permissions: baseline mode → {mode}")
+            return
 
     def _show_command_message(self, body: str) -> None:
         """Show command output in a modal (tau's _show_command_message)."""

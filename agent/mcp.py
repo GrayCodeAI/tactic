@@ -200,6 +200,22 @@ def _write_message(msg: dict) -> None:
     sys.stdout.flush()
 
 
+def _acl_denies(name: str, args: dict) -> bool:
+    """True when an explicit ACL deny rule matches (tool, serialized args).
+
+    MCP tools stay open by default; only an explicit deny rule blocks a call,
+    so adding the ACL never breaks working tooling. Exact rules with patterns
+    are matched against the JSON-serialised arguments.
+    """
+    try:
+        from .permissions import PermissionStore
+
+        decision = PermissionStore().lookup(name, json.dumps(args, sort_keys=True))
+        return decision == "deny"
+    except Exception:  # noqa: BLE001 — never let the ACL take the server down
+        return False
+
+
 def serve() -> int:
     """Run the MCP stdio server until stdin closes."""
     stdin = sys.stdin
@@ -233,6 +249,20 @@ def serve() -> int:
         if method == "tools/call":
             name = params.get("name", "")
             args = params.get("arguments") or {}
+            # Per-tool ACL (fx permission slice): a deny rule blocks the call
+            # before it runs; ask baseline defaults to deny for sensitive tools.
+            if _acl_denies(name, args):
+                _write_message({
+                    "jsonrpc": "2.0",
+                    "id": rid,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(
+                            {"error": f"permission denied for tool {name!r}"},
+                            indent=2)}],
+                        "isError": True,
+                    },
+                })
+                continue
             try:
                 payload, is_error = _handle_tool(name, args)
             except Exception as e:  # noqa: BLE001 — report tool crashes as MCP results
