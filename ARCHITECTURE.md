@@ -155,5 +155,16 @@ path enforces the same ACL as the MCP server. Verified: 36 loop/permissions +
 441 fast tests, ruff clean.
 
 **Next (by value):** Step **D** (surfaces call a stable core API, not engine
-internals — mostly done via the `loop.py` facade), then **B** (extract the TUI
-into a `tui/` package). Steps **E/F** (ports & adapters, robustness) after that.
+internals — mostly done via the `loop.py` facade). Step **E/F** (ports &
+adapters, robustness) after that.
+
+**Step B — TRIED, REVERTED, DEFERRED.** A TUI extraction into `tui_screens.py`
+was attempted and reverted. Findings corrected the earlier "clean split"
+assessment: the 10 `ModalScreen` subclasses are **not** self-contained. They
+also reference `render_event` (a ~50-line function defined in `tui.py`), the
+module constants `REPO`/`PROBLEMS_FILE`, and `sess`/`SessionManager`. A clean
+extraction would require relocating those too (a much larger, higher-risk
+refactor), and importing them into `tui_screens.py` from `tui.py` would be a
+circular import. So the TUI is not a clean split — leave `tui.py` (2 280 LOC)
+as-is unless a future need (e.g. a real second TUI surface) justifies the bigger
+refactor. Deferred.
