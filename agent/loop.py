@@ -328,81 +328,91 @@ def _error_message(model: str, message: str) -> AssistantMessage:
     )
 
 
-# Lean compat: re-export prove loop for existing imports (from .loop import prove)
-try:
+# ---------------------------------------------------------------------------
+# Lean compat facade over the canonical engine (agent/prover_loop.py).
+#
+# Two concerns live here: the async coding loop above, and this thin facade
+# re-exporting the proof engine so existing `from .loop import ...` call sites
+# keep working. The submodules are reachable as `loop.lean/llm/lsp` so tests
+# can monkeypatch them. `prove` only syncs a redirected `loop.LEAN_DIR` (bench
+# isolation + hermetic tests) before delegating; `prove_best_of` loops through
+# this module's `prove` so a ``loop.prove`` monkeypatch stays honoured.
+from .prover_loop import (  # noqa: F401
+    HAMMERS,
+    HEADER,
+    LEAN_DIR,
+    SYSTEM,
+    SYSTEM_FULL,
+    Result,
+    _extract_body,
+    _extract_full_file,
+    _proof_body,
+    _split_signature,
+    lean,
+    llm,
+    lsp,
+)
+
+
+def prove(*args, **kwargs):
+    """Thin facade over :func:`prover_loop.prove` (syncs redirected LEAN_DIR)."""
     import agent.prover_loop as _pl
 
-    from .prover_loop import (  # noqa: F401  # noqa: F401
-        HAMMERS,
-        HEADER,
-        SYSTEM,
-        SYSTEM_FULL,
-        Result,
-        _extract_body,
-        _extract_full_file,
-        _proof_body,
-        _split_signature,
+    if LEAN_DIR is not _pl.LEAN_DIR:
+        _pl.LEAN_DIR = LEAN_DIR
+    return _pl.prove(*args, **kwargs)
+
+
+def prove_best_of(
+    statement: str,
+    n_attempts: int = 1,
+    max_steps: int = 20,
+    verbose: bool = True,
+    problem_id: str | None = None,
+    goal_feedback: bool = True,
+    on_event=None,
+    should_stop=None,
+    record_session: bool = True,
+    skip_hammers: bool = False,
+    temperature: float = 0.2,
+    temperature_delta: float = 0.4,
+    difficulty: str | None = None,
+    model_name: str | None = None,
+    lemma_plan: bool | None = None,
+    full_file: bool = False,
+    adaptive_steps: bool = False,
+):
+    """Best-of-N facade over :func:`prove`, mirroring prover_loop.prove_best_of.
+
+    Loops through this module's ``prove`` so a ``loop.prove`` monkeypatch
+    (hermetic tests) is honoured, and always syncs a redirected ``LEAN_DIR``.
+    """
+    n = max(1, n_attempts)
+    results = []
+    for i in range(1, n + 1):
+        temp = temperature + temperature_delta * (i - 1)
+        r = prove(  # type: ignore
+            statement,
+            max_steps=max_steps,
+            verbose=verbose,
+            problem_id=problem_id,
+            goal_feedback=goal_feedback,
+            on_event=on_event,
+            should_stop=should_stop,
+            record_session=record_session,
+            skip_hammers=skip_hammers or i > 1,
+            temperature=temp,
+            difficulty=difficulty,
+            model_name=model_name,
+            lemma_plan=lemma_plan,
+            full_file=full_file,
+            adaptive_steps=adaptive_steps,
+        )
+        results.append(r)
+        if r.proved:
+            break
+    best = next((r for r in results if r.proved), None) or max(
+        results, key=lambda r: r.steps
     )
-    from .prover_loop import lean as _lean
-    from .prover_loop import llm as _llm
-    from .prover_loop import lsp as _lsp
-
-    lean = _lean  # type: ignore
-    llm = _llm  # type: ignore
-    lsp = _lsp  # type: ignore
-    LEAN_DIR = _pl.LEAN_DIR  # type: ignore
-
-    def prove(*args, **kwargs):  # type: ignore[no-redef]
-        _pl.LEAN_DIR = LEAN_DIR  # type: ignore
-        return _pl.prove(*args, **kwargs)
-
-    def prove_best_of(  # type: ignore[no-redef]
-        statement: str,
-        n_attempts: int = 1,
-        max_steps: int = 20,
-        verbose: bool = True,
-        problem_id: str | None = None,
-        goal_feedback: bool = True,
-        on_event=None,
-        should_stop=None,
-        record_session: bool = True,
-        skip_hammers: bool = False,
-        temperature: float = 0.2,
-        temperature_delta: float = 0.4,
-        difficulty: str | None = None,
-        model_name: str | None = None,
-        lemma_plan: bool | None = None,
-        full_file: bool = False,
-        adaptive_steps: bool = False,
-    ):
-        _pl.LEAN_DIR = LEAN_DIR  # type: ignore
-        n = max(1, n_attempts)
-        results = []
-        for i in range(1, n + 1):
-            temp = temperature + temperature_delta * (i - 1)
-            r = prove(  # type: ignore
-                statement,
-                max_steps=max_steps,
-                verbose=verbose,
-                problem_id=problem_id,
-                goal_feedback=goal_feedback,
-                on_event=on_event,
-                should_stop=should_stop,
-                record_session=record_session,
-                skip_hammers=skip_hammers or i > 1,
-                temperature=temp,
-                difficulty=difficulty,
-                model_name=model_name,
-                lemma_plan=lemma_plan,
-                full_file=full_file,
-                adaptive_steps=adaptive_steps,
-            )
-            results.append(r)
-            if r.proved:
-                break
-        best = next((r for r in results if r.proved), None) or max(results, key=lambda r: r.steps)  # type: ignore
-        best.attempts = results  # type: ignore
-        return best
-
-except ImportError:
-    pass
+    best.attempts = results  # type: ignore
+    return best
