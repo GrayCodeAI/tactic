@@ -98,7 +98,14 @@ def _resolve_files(path: Path | None) -> list[tuple[str, Path | None]]:
 
 
 def get(key: str, *, path: Path | None = None) -> Any:
-    """Resolve a single setting through the precedence chain."""
+    """Resolve a single setting through the precedence chain (highest wins):
+
+    1. ``PROVER_<KEY>`` environment variable
+    2. ``<workspace>/.prover/settings.json`` (project settings)
+    3. ``~/.prover/settings.json`` (user/global settings)
+    4. ``<workspace>/.prover.json`` repo-safe defaults (project_defaults)
+    5. Built-in default
+    """
     ckey = canonical_key(key)
     if ckey not in DEFAULTS:
         raise KeyError(f"unknown setting: {key}")
@@ -112,6 +119,16 @@ def get(key: str, *, path: Path | None = None) -> Any:
         data = _layers(path).get(layer, {})
         if ckey in data:
             return _coerce(ckey, data[ckey])
+
+    # Repo-safe committed defaults (.prover.json) form the next-lowest layer.
+    from .project_defaults import effective_defaults
+
+    proj = effective_defaults()
+    if ckey in proj:
+        try:
+            return _coerce(ckey, proj[ckey])
+        except (TypeError, ValueError):
+            pass
 
     return default
 

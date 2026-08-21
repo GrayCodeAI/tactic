@@ -108,9 +108,9 @@ def cmd_bench(args: argparse.Namespace) -> int:
 
     goal_feedback = not args.no_goal_feedback
 
-    from .project_defaults import effective_defaults
+    from . import settings
 
-    quiet = bool(effective_defaults().get("quiet", False))
+    quiet = bool(settings.get("quiet"))
 
     if args.parallel and args.parallel > 1:
         print(f"Running {len(problems)} problems in parallel (workers={args.parallel})...")
@@ -526,19 +526,17 @@ def cli(argv: list[str] | None = None) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the argument parser; repo-safe project defaults set option defaults.
+    """Build the argument parser; resolved settings set option defaults.
 
-    Split out from ``cli`` so tests can inspect the parsed defaults without
-    running a command (which would need a live endpoint).
+    Defaults come from :func:`agent.settings.get`, the single documented
+    precedence chain (env > project settings > user settings > .prover.json
+    repo defaults > built-in). Split out from ``cli`` so tests can inspect the
+    parsed defaults without running a command (which needs a live endpoint).
     """
-    from .project_defaults import effective_defaults
+    from . import settings
 
-    # Repo-safe committed defaults (.prover.json) become the CLI defaults, so
-    # a repo can pin sane values without touching flags. PROVER_<KEY> env vars
-    # still win via settings if set explicitly by callers.
-    proj = effective_defaults()
-    proj_max_steps = int(proj.get("max_steps", 20))
-    proj_workers = int(proj.get("workers", 1))
+    proj_max_steps = int(settings.get("max_steps"))
+    proj_workers = int(settings.get("workers"))
 
     ap = argparse.ArgumentParser(
         prog="prover",

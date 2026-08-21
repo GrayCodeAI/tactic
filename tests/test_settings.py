@@ -87,3 +87,30 @@ def test_explicit_path_override(monkeypatch, tmp_path) -> None:
 def test_all_settings() -> None:
     res = settings.all_settings()
     assert set(res) == set(settings.DEFAULTS)
+
+
+def test_prover_json_repo_default_layer(monkeypatch, tmp_path) -> None:
+    """settings.get falls back to .prover.json repo-safe defaults."""
+    import json as _json
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PROVER_CONFIG_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".prover.json").write_text(_json.dumps({"max_steps": 9}))
+    assert settings.get("max_steps") == 9
+    assert settings.get("permission_mode") == "ask"  # built-in floor
+
+
+def test_env_wins_over_prover_json(monkeypatch, tmp_path) -> None:
+    import json as _json
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PROVER_CONFIG_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".prover.json").write_text(_json.dumps({"max_steps": 9}))
+    monkeypatch.setenv("PROVER_MAX_STEPS", "12")
+    assert settings.get("max_steps") == 12
