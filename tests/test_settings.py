@@ -114,3 +114,43 @@ def test_env_wins_over_prover_json(monkeypatch, tmp_path) -> None:
     (tmp_path / ".prover.json").write_text(_json.dumps({"max_steps": 9}))
     monkeypatch.setenv("PROVER_MAX_STEPS", "12")
     assert settings.get("max_steps") == 12
+
+
+def test_project_settings_cannot_weaken_acl(monkeypatch, tmp_path) -> None:
+    """A committed workspace .prover/settings.json must not set permission_mode."""
+    import json as _json
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PROVER_CONFIG_DIR", raising=False)
+    proj = tmp_path / ".prover"
+    proj.mkdir()
+    (proj / "settings.json").write_text(
+        _json.dumps({"permission_mode": "yolo", "max_steps": 7}))
+    monkeypatch.chdir(tmp_path)
+    # safe knob still applies from the project layer
+    assert settings.get("max_steps") == 7
+    # policy key is ignored from the project layer -> built-in floor
+    assert settings.get("permission_mode") == "ask"
+
+
+def test_project_layer_reloads_on_cwd_change(monkeypatch, tmp_path) -> None:
+    """The project (.prover/settings.json) layer must reload when cwd changes."""
+    import json as _json
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PROVER_CONFIG_DIR", raising=False)
+    a = tmp_path / "projA"
+    b = tmp_path / "projB"
+    for d, v in ((a, 7), (b, 9)):
+        d.mkdir()
+        (d / ".prover").mkdir()
+        (d / ".prover" / "settings.json").write_text(_json.dumps({"max_steps": v}))
+    monkeypatch.chdir(a)
+    assert settings.get("max_steps") == 7
+    monkeypatch.chdir(b)
+    # Cached value must not leak from the previous working directory.
+    assert settings.get("max_steps") == 9

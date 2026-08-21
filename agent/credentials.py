@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,11 +83,24 @@ class FileCredentialStore:
 
     def _write_all(self, data: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        payload = json.dumps(data, indent=2) + "\n"
+        # Write to a temp file in the same dir, chmod 0600 before the secret
+        # content is placed, then atomically rename — readers never observe a
+        # partial/absent file, and the world never sees a world-readable window.
+        fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".creds-")
         try:
-            os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+            os.chmod(tmp, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def get(self, provider: str) -> OAuthCredential | None:
         if not provider:

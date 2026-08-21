@@ -241,8 +241,11 @@ def estimate_cost(prompt_tokens: int, completion_tokens: int, model_name: str | 
     profile = models.profile_for(model_name)
     if profile is not None and profile.cost_in is not None and profile.cost_out is not None:
         return (prompt_tokens * profile.cost_in + completion_tokens * profile.cost_out) / 1_000_000
-    # Try exact match first, then prefix match for versioned names
-    for key, (in_cost, out_cost) in _COST_PER_1M.items():
+    # Exact match wins; else longest-prefix match so "gpt-4o-mini" is not
+    # claimed by the shorter key "gpt-4o". Keys are sorted longest-first.
+    for key, (in_cost, out_cost) in sorted(
+        _COST_PER_1M.items(), key=lambda kv: len(kv[0]), reverse=True
+    ):
         if model_name == key or model_name.startswith(key.rstrip('-*')):
             return (prompt_tokens * in_cost + completion_tokens * out_cost) / 1_000_000
     # Unknown model: assume free (conservative for budgeting)

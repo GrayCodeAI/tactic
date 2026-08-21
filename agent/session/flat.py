@@ -68,9 +68,15 @@ class Session:
     def close(self) -> None:
         if self._fh is not None:
             try:
-                self._fh.close()
+                self._fh.flush()
+                os.fsync(self._fh.fileno())
+            except (OSError, ValueError):
+                pass
             finally:
-                self._fh = None
+                try:
+                    self._fh.close()
+                finally:
+                    self._fh = None
 
 
 def read_session(path: Path) -> list[dict]:

@@ -107,10 +107,10 @@ EOF
 def fidelity(chat: Path, report: Path, out_chat: Path, timeout: int) -> int:
     """Re-prove every training entry with real Lean; keep only certified."""
     from .lean import check_file
-    from .lean_baseline import HEADER, build_lean_file
+    from .lean_baseline import HEADER, _signature, build_lean_file
     from .loop import LEAN_DIR
 
-    tmp = Path("/tmp/prover_fidelity")
+    tmp = LEAN_DIR / "tmp" / "prover_fidelity"
     tmp.mkdir(parents=True, exist_ok=True)
     entries = [json.loads(line)
                for line in chat.read_text(encoding="utf-8").splitlines()]
@@ -119,21 +119,30 @@ def fidelity(chat: Path, report: Path, out_chat: Path, timeout: int) -> int:
     for i, e in enumerate(entries, 1):
         stmt = e["messages"][1]["content"]
         tactic = _extract_tactic(e["messages"][2]["content"])
-        m = re.search(r"prover_search(?:\s+(\d+))?", tactic)
-        if m:
-            depth = int(m.group(1) or 3)
-            tactic_name = f"prover_search {depth}"
-        else:
-            tactic_name = "prover_finish"
         set_opts = "\n".join(
             ln for ln in tactic.splitlines() if ln.startswith("set_option ")
         )
-        text = build_lean_file(stmt, "prover_search")
-        text = text.replace(HEADER, HEADER + set_opts + "\n", 1) if set_opts else text
-        text = text.rstrip("\n").rsplit("\n", 1)[0] + "\n  " + tactic_name + "\n"
+        m = re.search(r"prover_search(?:\s+(\d+))?", tactic)
+        if m:
+            # Native hammer family: keep the harness-native search tactic.
+            depth = int(m.group(1) or 3)
+            text = build_lean_file(stmt, "prover_search", search_depth=depth)
+            text = text.replace(HEADER, HEADER + set_opts + "\n", 1) if set_opts else text
+        else:
+            # A real tactic body (expert script). Re-prove EXACTLY that script —
+            # never swap it for a hardcoded `prover_finish`, which would silently
+            # certify/drop the wrong data.
+            body = "\n".join(
+                ln for ln in tactic.splitlines() if not ln.startswith("set_option ")
+            )
+            prefix = HEADER + (set_opts + "\n" if set_opts else "")
+            text = prefix + _signature(stmt) + "\n  " + body + "\n"
         f = tmp / f"fidelity_{i:04d}.lean"
-        f.write_text(text, encoding="utf-8")
-        ok, err = check_file(f, LEAN_DIR, timeout)
+        try:
+            f.write_text(text, encoding="utf-8")
+            ok, err = check_file(f, LEAN_DIR, timeout)
+        finally:
+            f.unlink(missing_ok=True)
         if ok:
             certified.append(e)
         else:

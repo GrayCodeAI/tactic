@@ -38,6 +38,17 @@ FIDELITY_SYSTEM = (
 )
 
 
+def _statement_prefix(statement: str) -> str:
+    """Statement without its proof body: cut at the LAST ``:=`` (the one that
+    opens the proof), so multi-declaration/scaffolded statements keep their
+    full declaration. A plain ``.split(':=')[0]`` truncates at the first ``:=``.
+    """
+    s = statement.strip()
+    if ":=" not in s:
+        return s
+    return s.rsplit(":=", 1)[0].strip()
+
+
 def _read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -65,7 +76,7 @@ def _entry_from_report(path: Path, fid: str) -> list[dict]:
     return [
         {"id": s.get("id", f"{path.stem}_{i}"),
          "source": path.name,
-         "statement": s["statement"].split(":=")[0].strip(),
+         "statement": _statement_prefix(s["statement"]),
          "tactic": tactic,
          "fidelity": fid}
         for i, s in enumerate(report.get("solved_ids", []))
@@ -88,7 +99,7 @@ def gather(corpus_path: Path, reports: list[Path]) -> list[dict]:
         add({
             "id": str(e.get("id", "?")),
             "source": "corpus",
-            "statement": stmt.split(":=")[0].strip() if stmt else "",
+            "statement": _statement_prefix(stmt) if stmt else "",
             "tactic": tactic,
             "fidelity": "auto" if diff == "auto" else "templated",
         })
@@ -133,9 +144,12 @@ def main(argv: list[str] | None = None) -> int:
     if not reports:
         default_dir = Path("benchmark")
         if default_dir.exists():
+            # Default is the repo's own worked baselines. miniF2F runs are a
+            # hold-out evaluation benchmark, so they stay out of the SFT set
+            # unless explicitly passed via --report.
             reports = sorted(
                 p for p in default_dir.glob("lean_baseline*.json")
-                if p.stem != "lean_baseline_search4k"  # running, incomplete
+                if "minif2f" not in p.name
             )
     entries = gather(corpus, reports)
     if not entries:

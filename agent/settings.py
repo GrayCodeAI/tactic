@@ -40,6 +40,20 @@ DEFAULTS: dict[str, tuple[Any, str, str]] = {
     "quiet": (False, "bool", "suppress non-essential output (best for scripts)"),
 }
 
+# Keys a *project* (committed workspace `<cwd>/.prover/settings.json`) file
+# must never set. A repo is untrusted: letting it set `permission_mode` would
+# weaken the tool-policy ACL, and model/base_url/api_key would steer/leak the
+# API. The user's own `~/.prover/settings.json` keeps full control over these.
+_PROJECT_FORBIDDEN = frozenset({
+    "permission_mode",
+    "model",
+    "base_url",
+    "api_key",
+    "provider",
+    "credentials",
+    "permission",
+})
+
 
 def canonical_key(name: str) -> str:
     """Normalise a setting name to its canonical (lower, underscore) form."""
@@ -85,6 +99,13 @@ def _load_layers(path: Path | None = None) -> dict[str, dict[str, Any]]:
         if not isinstance(data, dict):
             continue
         layers[name] = data
+    # The workspace project layer is untrusted (a committed repo file): strip
+    # policy/API keys so a repo can pin harmless knobs but never weaken the
+    # ACL or steer credential use. User-layer control is untouched.
+    proj = layers.get("project")
+    if proj:
+        for key in _PROJECT_FORBIDDEN:
+            proj.pop(key, None)
     return layers
 
 
@@ -139,11 +160,15 @@ def all_settings(*, path: Path | None = None) -> dict[str, Any]:
 
 
 def _layers(path: Path | None = None) -> dict[str, dict[str, Any]]:
-    # small cache keyed by the resolved user path so repeated reads are cheap
-    # but still honour a fresh path in tests.
-    key = ""
-    if path is not None:
-        key = str(path)
+    # Cache keyed by BOTH resolved file paths: the value depends on the user
+    # settings file AND the cwd-relative project settings file, so a bare user
+    # path key goes stale when the working directory (and thus the project
+    # layer) changes within the same process.
+    from .paths import ProverPaths
+
+    user = str(path if path is not None else ProverPaths().config_dir / "settings.json")
+    project = str(Path.cwd() / ".prover" / "settings.json")
+    key = f"{user}::{project}"
     cache = getattr(_layers, "_cache", None)  # type: ignore[attr-defined]
     if cache is None:
         cache = {}

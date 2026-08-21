@@ -47,7 +47,8 @@ def lsp_goals_tool(lean_dir: Path) -> AgentTool:
         file = Path(args.get("file", ""))
         lsp = LeanLSP(lean_dir, file)
         try:
-            lsp.open_file(file.read_text(errors="replace") if file.exists() else "")
+            if not lsp.open_file():
+                return {"goals": "no goals"}
             goals = lsp.goal_at_end(file.read_text(errors="replace") if file.exists() else "")
             return {"goals": goals or "no goals"}
         finally:

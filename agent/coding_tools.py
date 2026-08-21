@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import os
+import signal
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -163,43 +165,6 @@ def file_lock(path: str | Path) -> asyncio.Lock:
     return lock
 
 
-def create_read_tool_definition() -> dict:
-    """Read tool schema + executor (tau create_read_tool_definition, lean-adapted)."""
-
-    async def execute(args: dict) -> dict:
-        path = normalize_path(args.get("path", ""))
-        try:
-            raw = path.read_bytes()
-        except OSError as exc:
-            return {"is_error": True, "content": f"read failed: {exc}"}
-        try:
-            content = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return {"content": f"(binary file, {format_size(len(raw))})"}
-        offset = int(args.get("offset", 0) or 0)
-        if offset:
-            content = "\n".join(content.splitlines()[offset:])
-        text, truncated = truncate_for_read(content)
-        result = {"content": text}
-        if truncated:
-            result["truncated"] = True
-        return result
-
-    return {
-        "name": "read",
-        "description": "Read a file's content with bounded output",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string"},
-                "offset": {"type": "integer", "description": "skip this many lines first"},
-            },
-            "required": ["path"],
-        },
-        "execute": execute,
-    }
-
-
 def create_coding_tools(cwd: Path | None = None, image_support: ImageSupportState | None = None) -> list[dict]:
     """The full coding tool set (tau create_coding_tools, lean-adapted).
 
@@ -295,11 +260,18 @@ def create_coding_tools(cwd: Path | None = None, image_support: ImageSupportStat
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=str(cwd or Path.cwd()),
+                start_new_session=True,
             )
             try:
                 stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=int(args.get("timeout", 120) or 120))
             except asyncio.TimeoutError:
-                proc.kill()
+                # Kill the whole process group — killing just the shell would
+                # orphan the command's child processes.
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    proc.kill()
+                proc.returncode = -9
                 return {"is_error": True, "content": "command timed out"}
             output = stdout.decode("utf-8", errors="replace")
             text, truncated = truncate_for_read(output)

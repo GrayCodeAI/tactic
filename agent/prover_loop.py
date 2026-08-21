@@ -555,126 +555,137 @@ def prove(
     extensions = 0
     prev_progress = (10**9, 10**9)  # (ndiag, ngoals) of the previous step
     step = 0
-    while step < max_steps:
-        step += 1
-        if stop_requested():
-            return finish(False, step - 1, "", llm.estimate_cost(total_prompt, total_completion), stopped=True)
-        ok, output = check_file()
-        diags = lean.parse_diagnostics(output)
-        ndiag = len(diags)
-        if ok:
-            emit("build", step=step, ok=True, diagnostics=0, summary="all goals solved")
-            return finish(True, step, target_file.read_text(),
-                          llm.estimate_cost(total_prompt, total_completion))
+    try:
+        while step < max_steps:
+            step += 1
+            if stop_requested():
+                return finish(False, step - 1, "", llm.estimate_cost(total_prompt, total_completion), stopped=True)
+            ok, output = check_file()
+            diags = lean.parse_diagnostics(output)
+            ndiag = len(diags)
+            if ok:
+                emit("build", step=step, ok=True, diagnostics=0, summary="all goals solved")
+                return finish(True, step, target_file.read_text(),
+                              llm.estimate_cost(total_prompt, total_completion))
 
-        report = lean.error_report(LEAN_DIR, output)
-        emit("build", step=step, ok=False, diagnostics=ndiag,
-             summary=(diags[0].message if diags else "sorry / not proved"),
-             report=report[:4000])
-        goals = get_goals()
-        ngoals = goals.count("⊢") if goals else 0
-        if goals:
-            emit("goals", step=step, goals=goals)
+            report = lean.error_report(LEAN_DIR, output)
+            emit("build", step=step, ok=False, diagnostics=ndiag,
+                 summary=(diags[0].message if diags else "sorry / not proved"),
+                 report=report[:4000])
+            goals = get_goals()
+            ngoals = goals.count("⊢") if goals else 0
+            if goals:
+                emit("goals", step=step, goals=goals)
 
-        lemma_hints = ""
-        if lemma_bank:
-            names = [ln.split("(")[0].split()[1] for ln in lemma_bank.strip().splitlines()
-                     if ln.startswith(("theorem ", "lemma "))]
-            lemma_hints = (
-                "Helper lemmas already proven in this file (use them via "
-                f"rw/exact/simpa): {', '.join(names)}\n\n"
-            )
+            # ---- Adaptive budget: if we just ran out of steps while making real
+            # progress, extend the budget (bounded: ≤2 extensions, ≤4× original).
+            # Placed BEFORE the LLM call (not at the loop bottom) so the extension
+            # still happens when this step's LLM call fails and `continue`s — a
+            # bottom placement is skipped on that path and prematurely exits.
+            progress = (ndiag, ngoals)
+            improving = progress < prev_progress
+            prev_progress = progress
+            if (
+                adaptive_steps
+                and step == max_steps
+                and extensions < 2
+                and max_steps < base_max_steps * 4
+                and improving
+            ):
+                old = max_steps
+                max_steps = int(max_steps * 1.5)
+                extensions += 1
+                emit("extend", from_steps=old, to_steps=max_steps,
+                     reason=f"progress on step {step} (diags {ndiag}, goals {ngoals})")
 
-        write_what = (
-            "Write ONLY the tactic proof body."
-            if not full_file else
-            "Write the COMPLETE Lean file (helpers + imports allowed) proving "
-            "the theorem with exactly the given signature."
-        )
-        user_msg = (
-            f"Theorem signature:\n{signature}\n\n"
-            + lemma_hints
-            + retrieval_hints
-            + f"Compiler diagnostics:\n{report}\n\n"
-            + (f"Open goals at the end of your last proof attempt:\n{goals}\n\n" if goals else "")
-            + (extract_note + "\n\n" if extract_note else "")
-            + write_what
-        )
-        extract_note = ""  # consumed
-        history.append({"role": "user", "content": user_msg})
-        emit("llm_request", step=step)
-        resp = llm.chat(system_prompt, history, temperature=temperature, model_name=active_model)
-        if resp.content.startswith("[LLM error"):
-            emit("llm_error", step=step, error=resp.content)
-            diag.log_llm_error(
-                context=diag_context, phase=f"step-{step}", error=resp.content
-            )
-            history.append({"role": "assistant", "content": "(no response)"})
-            continue
-        if full_file:
-            new_content = _extract_full_file(resp.content, signature)
-            if new_content is None:
-                name = re.search(r"theorem\s+([A-Za-z0-9_'.]+)", signature).group(1)
-                extract_note = (
-                    "Your reply was not accepted: it must contain a single "
-                    f"```lean block that declares `theorem {name}` with the "
-                    "given signature (write the whole file, do not rename it)."
+            lemma_hints = ""
+            if lemma_bank:
+                names = [ln.split("(")[0].split()[1] for ln in lemma_bank.strip().splitlines()
+                         if ln.startswith(("theorem ", "lemma "))]
+                lemma_hints = (
+                    "Helper lemmas already proven in this file (use them via "
+                    f"rw/exact/simpa): {', '.join(names)}\n\n"
                 )
-                emit("llm_response", step=step, accepted=False,
-                     prompt_tokens=resp.prompt_tokens,
-                     completion_tokens=resp.completion_tokens,
-                     tokens=resp.total_tokens, body="")
-                history.append({"role": "assistant", "content": resp.content})
-                total_prompt += resp.prompt_tokens
-                total_completion += resp.completion_tokens
-                total_tokens += resp.total_tokens
-                continue
-            write_file(new_content)
-            history.append({"role": "assistant", "content": resp.content})
-        else:
-            new_body = _extract_body(resp.content)
-            if new_body:
-                body = new_body
-                write_file(signature + "\n" + body)
-                history.append({"role": "assistant", "content": resp.content})
-        total_prompt += resp.prompt_tokens
-        total_completion += resp.completion_tokens
-        total_tokens += resp.total_tokens
-        emit("llm_response", step=step, accepted=True,
-             prompt_tokens=resp.prompt_tokens,
-             completion_tokens=resp.completion_tokens,
-             tokens=resp.total_tokens,
-             body=(new_content if full_file else new_body))
-        # Compaction beats truncation: fold old dead-end turns into a
-        # summary so the model stops re-trying them (tau's memory model).
-        n_msgs = len(history)
-        history, summary = compact_history(history)
-        # tau parity: if the estimated context crosses the auto-compaction
-        # threshold (70% of the model's context window) without the turn
-        # count having triggered yet, compact eagerly.
-        threshold = auto_compaction_threshold_for_context_window(llm.context_window_tokens())
-        if summary is None and threshold and estimate_context_tokens(system_prompt, history) >= threshold:
-            history, summary = compact_history(history, keep_turns=8, compact_at_turns=14)
-        if summary:
-            emit("compaction", dropped=n_msgs - len(history))
 
-        # ---- Adaptive budget: if we just ran out of steps while making real
-        # progress, extend the budget (bounded: ≤2 extensions, ≤4× original).
-        progress = (ndiag, ngoals)
-        improving = progress < prev_progress
-        prev_progress = progress
-        if (
-            adaptive_steps
-            and step == max_steps
-            and extensions < 2
-            and max_steps < base_max_steps * 4
-            and improving
-        ):
-            old = max_steps
-            max_steps = int(max_steps * 1.5)
-            extensions += 1
-            emit("extend", from_steps=old, to_steps=max_steps,
-                 reason=f"progress on step {step} (diags {ndiag}, goals {ngoals})")
+            write_what = (
+                "Write ONLY the tactic proof body."
+                if not full_file else
+                "Write the COMPLETE Lean file (helpers + imports allowed) proving "
+                "the theorem with exactly the given signature."
+            )
+            user_msg = (
+                f"Theorem signature:\n{signature}\n\n"
+                + lemma_hints
+                + retrieval_hints
+                + f"Compiler diagnostics:\n{report}\n\n"
+                + (f"Open goals at the end of your last proof attempt:\n{goals}\n\n" if goals else "")
+                + (extract_note + "\n\n" if extract_note else "")
+                + write_what
+            )
+            extract_note = ""  # consumed
+            history.append({"role": "user", "content": user_msg})
+            emit("llm_request", step=step)
+            resp = llm.chat(system_prompt, history, temperature=temperature, model_name=active_model)
+            if resp.content.startswith("[LLM error"):
+                emit("llm_error", step=step, error=resp.content)
+                diag.log_llm_error(
+                    context=diag_context, phase=f"step-{step}", error=resp.content
+                )
+                history.append({"role": "assistant", "content": "(no response)"})
+                continue
+            if full_file:
+                new_content = _extract_full_file(resp.content, signature)
+                if new_content is None:
+                    name = re.search(r"theorem\s+([A-Za-z0-9_'.]+)", signature).group(1)
+                    extract_note = (
+                        "Your reply was not accepted: it must contain a single "
+                        f"```lean block that declares `theorem {name}` with the "
+                        "given signature (write the whole file, do not rename it)."
+                    )
+                    emit("llm_response", step=step, accepted=False,
+                         prompt_tokens=resp.prompt_tokens,
+                         completion_tokens=resp.completion_tokens,
+                         tokens=resp.total_tokens, body="")
+                    history.append({"role": "assistant", "content": resp.content})
+                    total_prompt += resp.prompt_tokens
+                    total_completion += resp.completion_tokens
+                    total_tokens += resp.total_tokens
+                    continue
+                write_file(new_content)
+                history.append({"role": "assistant", "content": resp.content})
+            else:
+                new_body = _extract_body(resp.content)
+                if new_body:
+                    body = new_body
+                    write_file(signature + "\n" + body)
+                    history.append({"role": "assistant", "content": resp.content})
+            total_prompt += resp.prompt_tokens
+            total_completion += resp.completion_tokens
+            total_tokens += resp.total_tokens
+            emit("llm_response", step=step, accepted=True,
+                 prompt_tokens=resp.prompt_tokens,
+                 completion_tokens=resp.completion_tokens,
+                 tokens=resp.total_tokens,
+                 body=(new_content if full_file else new_body))
+            # Compaction beats truncation: fold old dead-end turns into a
+            # summary so the model stops re-trying them (tau's memory model).
+            n_msgs = len(history)
+            history, summary = compact_history(history)
+            # tau parity: if the estimated context crosses the auto-compaction
+            # threshold (70% of the model's context window) without the turn
+            # count having triggered yet, compact eagerly.
+            threshold = auto_compaction_threshold_for_context_window(llm.context_window_tokens())
+            if summary is None and threshold and estimate_context_tokens(system_prompt, history) >= threshold:
+                history, summary = compact_history(history, keep_turns=8, compact_at_turns=14)
+            if summary:
+                emit("compaction", dropped=n_msgs - len(history))
+
+    finally:
+        # Release the lean --server subprocess and the session JSONL
+        # handle even if an unexpected exception escapes the loop.
+        if lsp_client:
+            lsp_client.close()
+        session.close()
 
     return finish(False, max_steps, "", llm.estimate_cost(total_prompt, total_completion))
 

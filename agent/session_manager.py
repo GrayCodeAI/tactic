@@ -17,6 +17,8 @@ sessions are flat JSONL event streams, so the port is flattened to match:
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -60,7 +62,11 @@ class SessionManager:
         return self.dir / "index.jsonl"
 
     def upsert(self, record: SessionRecord) -> None:
-        """Insert or replace one session's index record (tau's _upsert)."""
+        """Insert or replace one session's index record (tau's _upsert).
+
+        Written atomically (temp file + rename) so a crash or concurrent
+        reader never observes a truncated/partial index.
+        """
         self.dir.mkdir(parents=True, exist_ok=True)
         lines: list[str] = []
         if self.index_path.exists():
@@ -73,7 +79,20 @@ class SessionManager:
                 except json.JSONDecodeError:
                     continue
         lines.append(record.to_json())
-        self.index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        payload = "\n".join(lines) + "\n"
+        fd, tmp = tempfile.mkstemp(dir=self.dir, prefix=".index-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.index_path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def touch(self, session_id: str, **fields: object) -> SessionRecord | None:
         """Update fields of an existing record and bump updated_at."""

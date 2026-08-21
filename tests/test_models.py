@@ -140,3 +140,12 @@ def test_estimate_cost_partial_profile_overrides_falls_back(isolated_config) -> 
 
 def test_available_models_empty_without_any_endpoint(isolated_config) -> None:
     assert llm.available_models() == []
+
+
+def test_estimate_cost_longest_prefix_mini() -> None:
+    """gpt-4o-mini must not be claimed by the shorter key gpt-4o."""
+    mini = llm.estimate_cost(1_000_000, 0, "gpt-4o-mini")
+    full = llm.estimate_cost(1_000_000, 0, "gpt-4o")
+    assert mini == pytest.approx(0.15)
+    assert full == pytest.approx(5.0)
+    assert mini < full

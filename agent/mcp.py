@@ -111,6 +111,48 @@ def _result_json(r: Result, statement: str) -> dict:
     }
 
 
+def _validate_args(name: str, args: dict) -> str | None:
+    """Validate call args against the tool's inputSchema. None if OK, else error.
+
+    Enforces required fields, JSON types (with a safe int/str coercion for
+    clients that send numbers as strings), and the integer minimum/maximum and
+    string enum bounds declared in each tool's schema.
+    """
+    try:
+        schema = next(t for t in TOOLS if t["name"] == name)["inputSchema"]
+    except (StopIteration, KeyError):
+        return f"unknown tool: {name}"
+    props = schema.get("properties", {})
+    for req in schema.get("required", []):
+        if req not in args:
+            return f"missing required argument {req!r}"
+    for key, spec in props.items():
+        if key not in args:
+            continue
+        value = args[key]
+        typ = spec.get("type")
+        if typ in ("integer", "number"):
+            if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+                return f"argument {key!r} must be a number"
+            try:
+                num = int(value) if typ == "integer" else float(value)
+            except (TypeError, ValueError):
+                return f"argument {key!r} must be a number"
+            args[key] = num
+            if "minimum" in spec and num < spec["minimum"]:
+                return f"argument {key!r} must be >= {spec['minimum']}"
+            if "maximum" in spec and num > spec["maximum"]:
+                return f"argument {key!r} must be <= {spec['maximum']}"
+        elif typ == "string":
+            if not isinstance(value, str):
+                args[key] = str(value)
+            if "enum" in spec and args[key] not in spec["enum"]:
+                return f"argument {key!r} must be one of {spec['enum']}"
+        elif typ == "boolean" and not isinstance(value, bool):
+            return f"argument {key!r} must be a boolean"
+    return None
+
+
 def _handle_tool(name: str, args: dict) -> tuple[dict, bool]:
     """Run a tool; return (payload, is_error)."""
     from pathlib import Path
@@ -259,6 +301,21 @@ def serve() -> int:
                         "content": [{"type": "text", "text": json.dumps(
                             {"error": f"permission denied for tool {name!r}"},
                             indent=2)}],
+                        "isError": True,
+                    },
+                })
+                continue
+            # Enforce the tool's own schema bounds (required/types/minmax/enum)
+            # before dispatch, so out-of-range or malformed args never reach the
+            # engine with unvalidated values.
+            err = _validate_args(name, args)
+            if err is not None:
+                _write_message({
+                    "jsonrpc": "2.0",
+                    "id": rid,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(
+                            {"error": err}, indent=2)}],
                         "isError": True,
                     },
                 })

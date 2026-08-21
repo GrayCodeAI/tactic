@@ -199,15 +199,46 @@ def main(argv: list[str] | None = None) -> int:
     if not problems:
         print("no problems found", file=sys.stderr)
         return 1
-    problems = problems[args.start - 1:]
+    slice_problems = problems[args.start - 1:]
 
-    print(f"baseline: {len(problems)} problems, tactic={args.tactic}, "
+    print(f"baseline: {len(slice_problems)} problems this run, tactic={args.tactic}, "
           f"lean_dir={LEAN_DIR}", file=sys.stderr)
-    report = run_baseline(problems, LEAN_DIR, LEAN_DIR / "tmp",
-                          tactic=args.tactic, timeout=args.timeout,
-                          search_budget=args.search_budget,
-                          search_depth=args.search_depth)
+    new_report = run_baseline(slice_problems, LEAN_DIR, LEAN_DIR / "tmp",
+                              tactic=args.tactic, timeout=args.timeout,
+                              search_budget=args.search_budget,
+                              search_depth=args.search_depth)
     out = Path(args.out)
+
+    # Merge this slice into any prior report so `--start N` resumes instead of
+    # overwriting the already-solved ids. Newest result wins per id.
+    by_id: dict[str, dict] = {}
+    prior_seconds = 0.0
+    if out.exists():
+        try:
+            prior = json.loads(out.read_text(encoding="utf-8"))
+            for e in prior.get("solved_ids", []):
+                by_id[str(e.get("id"))] = e
+            for e in prior.get("unsolved_ids", []):
+                by_id[str(e.get("id"))] = e
+            prior_seconds = float(prior.get("seconds", 0.0))
+        except (OSError, json.JSONDecodeError):
+            by_id = {}
+    for e in new_report["solved_ids"] + new_report["unsolved_ids"]:
+        by_id[str(e["id"])] = e
+    solved = [e for e in by_id.values() if e["proved"]]
+    unsolved = [e for e in by_id.values() if not e["proved"]]
+    report = {
+        "tactic": new_report["tactic"],
+        "total": len(by_id),
+        "solved": len(solved),
+        "seconds": round(prior_seconds + new_report["seconds"], 2),
+        "search_budget": new_report.get("search_budget"),
+        "search_depth": new_report.get("search_depth"),
+        "tiers": _tiers(solved, problems),
+        "solved_ids": sorted(solved, key=lambda e: str(e["id"])),
+        "unsolved_ids": sorted(unsolved, key=lambda e: str(e["id"])),
+    }
+
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2),
                    encoding="utf-8")

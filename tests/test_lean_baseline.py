@@ -141,3 +141,42 @@ def test_report_only_mode(tmp_path: Path, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "prover_search" in out and "1/2" in out
     assert "imo" in out and "mathd" in out
+
+
+def test_main_resume_merges_prior_report(tmp_path: Path, monkeypatch, capsys) -> None:
+    """`--start N` with an existing --out must merge, not overwrite (resume)."""
+    import json
+
+    probs = tmp_path / "problems.json"
+    probs.write_text(json.dumps([
+        {"id": "p1", "difficulty": "trivial",
+         "statement": "theorem p1 : True := by sorry"},
+        {"id": "p2", "difficulty": "easy",
+         "statement": "theorem p2 : True := by sorry"},
+    ]), encoding="utf-8")
+
+    def fake_check(f, lean_dir, timeout=120):
+        ok = f.name == "Baseline_p1.lean"  # only p1 solves
+        return ok, ("" if ok else "unsolved goals")
+
+    monkeypatch.setattr(lb, "check_file", fake_check)
+    # Route the `from .loop import LEAN_DIR` inside main() to the temp dir so
+    # temp .lean files stay out of the repo.
+    monkeypatch.setattr("agent.loop.LEAN_DIR", tmp_path)
+    out = tmp_path / "report.json"
+
+    # First a resume-style run that only covers p2 (p2 fails).
+    assert lb.main(["--problems", str(probs), "--out", str(out),
+                    "--start", "2"]) == 0
+    # Then run the whole set; p1 solves. p1 must survive the merge.
+    assert lb.main(["--problems", str(probs), "--out", str(out),
+                    "--start", "1"]) == 0
+
+    report = json.loads(out.read_text())
+    assert report["total"] == 2
+    assert report["solved"] == 1
+    assert {s["id"] for s in report["solved_ids"]} == {"p1"}
+    assert {s["id"] for s in report["unsolved_ids"]} == {"p2"}
+    # tiers recomputed across ALL problems, not the latest slice
+    assert report["tiers"]["trivial"] == {"solved": 1, "total": 1}
+    assert report["tiers"]["easy"] == {"solved": 0, "total": 1}

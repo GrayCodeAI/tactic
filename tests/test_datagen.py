@@ -90,3 +90,15 @@ def test_main_end_to_end(tmp_path: Path) -> None:
     rc = datagen.main(["--corpus", str(corpus), "--out", str(out)])
     assert rc == 0
     assert out.exists()
+
+
+def test_statement_prefix_cuts_at_last_by(tmp_path: Path) -> None:
+    """Scaffolded/multi-declaration statements keep their full declaration."""
+    scaffolded = (
+        "instance foo := { bar := 1 }\n"
+        "theorem prover_t (a b : \u2115) : a + b = b + a := by\n  sorry"
+    )
+    assert datagen._statement_prefix(scaffolded).endswith(": a + b = b + a")
+    assert ":= by" not in datagen._statement_prefix(scaffolded)
+    simple = "theorem prover_t : True := by trivial"
+    assert datagen._statement_prefix(simple) == "theorem prover_t : True"

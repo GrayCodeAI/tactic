@@ -1016,6 +1016,11 @@ class ProverApp(App):
         self.tui_settings = tui_settings or load_tui_settings()
         self._supports_pyperclip: bool | None = None
         self._terminal_title = TerminalTitleController()
+        # Reset the tab title even if the process dies abnormally (the Textual
+        # on_unmount restore only runs on graceful shutdown).
+        import atexit
+
+        atexit.register(self._terminal_title.restore)
         self._stop_flag = False
         self._run_active = False
         self._custom_seq = 0
@@ -1678,16 +1683,24 @@ class ProverApp(App):
         self.push_screen(MessageScreen("tools", "\n".join(f"- {n}" for n in names)))
 
     def _check_update(self) -> None:
-        """/update — check PyPI for a newer release."""
+        """/update — check PyPI for a newer release (off the UI thread)."""
         from .update_check import check_for_updates
 
-        info = check_for_updates()
-        if info.error:
-            self.notify(f"update check failed: {info.error}", severity="warning")
-        elif info.is_update_available:
-            self.notify(f"update available: {info.current_version} -> {info.latest_version}")
-        else:
-            self.notify(f"lean-prover {info.current_version} is up to date")
+        def worker() -> None:
+            info = check_for_updates()
+            if info.error:
+                self.call_from_thread(
+                    self.notify, f"update check failed: {info.error}",
+                    severity="warning")
+            elif info.is_update_available:
+                self.call_from_thread(
+                    self.notify,
+                    f"update available: {info.current_version} -> {info.latest_version}")
+            else:
+                self.call_from_thread(
+                    self.notify, f"lean-prover {info.current_version} is up to date")
+
+        self.run_worker(worker, thread=True, name="update-check")
 
     def _handle_permissions(self, result: CommandResult) -> None:
         """/permissions — list, remember, revoke or set baseline mode (fx ACL)."""

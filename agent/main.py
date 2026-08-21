@@ -681,7 +681,7 @@ def _build_parser() -> argparse.ArgumentParser:
     vr = sub.add_parser("version", help="print the current version")
     vr.set_defaults(fn=cmd_version)
 
-    rp = sub.add_parser("rpc", help="run the RPC/MCP stdio server (alias of `mcp`)")
+    rp = sub.add_parser("rpc", help="run the native RPC JSONL stdio loop")
     rp.set_defaults(fn=cmd_rpc)
 
     ch = sub.add_parser("chat", help="open a CodingSession REPL (Tau chat parity)")

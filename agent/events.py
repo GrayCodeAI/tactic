@@ -137,5 +137,15 @@ try:
         | ToolExecutionEndEvent,
         Field(discriminator="type"),
     ]
-except Exception:  # noqa: BLE001, S110
-    pass
+except Exception as exc:  # noqa: BLE001 — typed-event layer is optional
+    # The flat dict event stream still works everywhere; only the typed
+    # pydantic AgentEvent union is unavailable. Surface it instead of silently
+    # degrading the type layer.
+    import warnings
+
+    warnings.warn(
+        f"agent.events typed-event layer unavailable ({exc!r}); "
+        "flat event records still work as plain dicts",
+        RuntimeWarning,
+        stacklevel=1,
+    )

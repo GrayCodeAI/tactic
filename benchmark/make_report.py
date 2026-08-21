@@ -7,18 +7,36 @@ with full traces from the durable session files.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
 PROBLEMS = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("benchmark/problems.json")
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("report.json")
-SESSIONS = Path.home() / ".prover" / "sessions"
 TIER = {"trivial": 0, "easy": 1, "medium": 2, "hard": 3}
 
 
+def _sessions_dir() -> Path:
+    override = os.environ.get("PROVER_SESSIONS_DIR")
+    if override:
+        return Path(override)
+    try:
+        from agent.paths import ProverPaths
+        return ProverPaths().sessions_dir
+    except Exception:  # noqa: BLE001 — standalone utility, keep a sane default
+        return Path.home() / ".prover" / "sessions"
+
+
+SESSIONS = _sessions_dir()
+
+
 def latest_session(pid: str) -> Path | None:
-    files = sorted(SESSIONS.glob(f"*{pid}.jsonl"))
-    return files[-1] if files else None
+    files = [p for p in SESSIONS.glob(f"*{pid}.jsonl") if p.is_file()]
+    if not files:
+        return None
+    # Newest by mtime, not lexicographic-last — a second session for the same
+    # problem must not silently shadow results with an older run.
+    return max(files, key=lambda p: p.stat().st_mtime)
 
 
 def load(path: Path) -> list[dict]:
