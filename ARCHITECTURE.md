@@ -46,13 +46,13 @@ files, the god-class TUI, the fat CLI dispatcher).
 
 **Today's sharp edges** (what the proposal targets):
 
-| # | Problem | Location |
-|---|---|---|
-| 1 | Two overlapping loop files | `loop.py` + `prover_loop.py` |
-| 2 | God-class TUI | `tui.py` 2 280 LOC |
-| 3 | Fat CLI dispatcher | `main.py` 725 LOC |
-| 4 | Engine called ad hoc by 8 modules | `coding_session`, `coding_tools`, `loop`, `main`, `rpc`, `system_prompt`, `tui_adapter`, `tui` |
-| 5 | ACL gate only on MCP | `mcp.py` |
+| # | Problem | Location | Status |
+|---|---|---|---|
+| 1 | `loop.py` was a fragile import-shim (try/except swallow + LEAN_DIR re-patch) | `loop.py` | **done** (facade, `3f12704`) |
+| 2 | God-class TUI | `tui.py` 2 280 LOC | open |
+| 3 | Fat CLI dispatcher | `main.py` 725 LOC | open |
+| 4 | Engine reached ad hoc by 8 modules | `coding_session`, `coding_tools`, `loop`, `main`, `rpc`, `system_prompt`, `tui_adapter`, `tui` | open (facade thin end) |
+| 5 | ACL gate only on MCP | `mcp.py` | open |
 
 ---
 
@@ -132,8 +132,22 @@ C is a quick security win; B/H are cosmetic-but-worthwhile; G is truly optional.
   (model profiles, family context tables) stays where it owns the semantics.
 - No Zig / no framework churn.
 
-## 6. Suggested first move
+## 6. Roadmap status
 
-Start with **steps A + D** (unify `proof_loop`/`loop` into `engine/` and make
-surfaces call only the stable API). It is the highest-ROI change and unlocks
-C/E/F cleanly. Steps C (ACL everywhere) is a quick, low-risk add-on.
+**Step A — DONE (`3f12704`).** Investigation corrected the assumption: there is
+no duplicate engine. `prover_loop.py` is the single canonical proof engine;
+`loop.py` was a fragile `try/except ImportError` import-shim (plus the async
+coding loop). Step A removed the silent-swallow guard and the LEAN_DIR
+re-patching, leaving `loop.py` a thin facade (`prove` syncs a redirected
+`LEAN_DIR`; `prove_best_of` loops through `loop.prove` to keep the monkeypatch
+contract). Verified: 38 hermetic loop tests + full fast suite + real CLI.
+
+No `engine/` package was created — relocating working files would be churn with
+no functional gain, since the facade already routes every surface through the
+one canonical engine. Creating `engine/` is deferred and only worth it if we
+later want to bound `prover_loop.py`'s size (currently 739 LOC).
+
+**Next (by value):** Step **D** (surfaces call a stable core API, not engine
+internals — mostly done via the facade), then **C** (extend the ACL gate beyond
+MCP to local sensitive tools), then **B** (extract the TUI into a `tui/`
+package). Steps **E/F** (ports & adapters, robustness) after that.
