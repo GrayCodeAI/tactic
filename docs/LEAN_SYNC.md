@@ -16,7 +16,7 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 ## 1. `grind` — new flagship tactic (highest leverage) — ✅ DONE 2026-08-20 (hammerNames + build green)
 
 - Ref: `The --grind-- tactic` (Reference Manual), front-page examples (`grind [Nat.dvd_refl]` etc, 2026-08 safety-critical adoption).
-- Repo today: `lean/src/ProverSupport/ProverSupport.lean:26 hammerNames` = 11 hammers incl. `grind` first. `PROPOSALS.md:189` previously deferred — now landed.
+- Repo today: `lean/src/ProverSupport/ProverSupport.lean:26 hammerNames` = 11 hammers incl. `grind` first. previously deferred — now landed.
 - Implement:
   1. Add `"grind"` to `hammerNames` first + `tryHammer` fallback handling. — DONE `ProverSupport.lean:26`
   2. New `prover_grind` wrapper or extend `prover_finish` to try `grind` first (fastest), then legacy chain. — DONE `prover_finish` tries `grind` first
@@ -45,7 +45,7 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 ## 5. Language Reference coverage (docs only, no code)
 
 - Ref TOC gaps: `Elaboration and Compilation`, `Type System`, `Type Classes`, `Coercions`, `Notations and Macros`, `Functors/Monads/do`, `Iterators`, `IO`.
-- Action: add `GUIDE.md § Lean internals` pointer; no loop change — but `ProverSupport` metaprogram notes (`mkNullNode` for `cases/induction` in `PROPOSALS-LEAN.md:73`) should cite `Notations and Macros` + `Elaboration`.
+- Action: add `GUIDE.md § Lean internals` pointer; no loop change — but `ProverSupport` metaprogram notes (`mkNullNode` for `cases/induction`) should cite `Notations and Macros` + `Elaboration`.
 
 ## 6. Use-case patterns to port (design influence)
 
@@ -71,8 +71,8 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 
 - Focus: **AI Integration** = training datasets + AI-assisted contribution tools (directly our `retrieval.py`, `synth.py`, `synth_lean.py`, `datagen.py` pipeline). Initiative roadmap validates our corpus approach.
 - **Ecosystem Coordination** + **Responsive Review (<1wk)** — when we eventually upstream lemmas or bump Mathlib, use initiative's triage dashboard (`queueboard`) not just Zulip.
-- **Enhanced Documentation** — Mathlib API docs https://leanprover-community.github.io/mathlib4_docs/ should be primary loogle target for `PROVER_RETRIEVE=1`; add `PROPOSALS.md` note.
-- Sponsors: XTX Markets / Renaissance Philanthropy — no code action, but cite in `PROPOSALS.md` honest scope.
+- **Enhanced Documentation** — Mathlib API docs https://leanprover-community.github.io/mathlib4_docs/ should be primary loogle target for `PROVER_RETRIEVE=1`.
+- Sponsors: XTX Markets / Renaissance Philanthropy — no code action; note for future sponsor list.
 
 ## 7d. Harmonic + Aristotle — https://harmonic.fun/ + https://aristotle.harmonic.fun/
 
@@ -125,7 +125,7 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 
 - **Role:** Private foundation advancing math/basic science; funds **Mathematics & Physical Sciences**, **Simons Collaborations**, **Flatiron Institute** (CCA/CCB/CCM/CCN/CCQ + SCC) — Flatiron **CCM** produces AI-for-math efficiency gains (PolarExpress) relevant to our `lean.py`/`lsp.py` performance.
 - **Link to Lean ecosystem:** Simons funds math that Mathlib formalizes; plus overlap with **Simons-funded 2026 Fields Medals** news and **Terry Tao on AI and Why We Do Math** (2026-08-13) — Tao's machine-assisted proof lecture (also AIM 2026-10-09) aligns with our autoformalization trajectory.
-- **No direct code action** — cite as upstream funder in `PROPOSALS.md` honest scope + sponsor list (alongside XTX/Renaissance); monitor **Funding Opportunities** / **Simons Collaborations** for potential grant fit (e.g., AI for Math, FormalQualBench-scale work).
+- **No direct code action** — note as upstream funder alongside XTX/Renaissance; monitor **Funding Opportunities** / **Simons Collaborations** for potential grant fit (e.g., AI for Math, FormalQualBench-scale work).
 - **Distinct from:** `simons` ≠ `leanprover` tooling; no Lean tactic/benchmark to import unlike Mathlib/Harmonic/Math Inc.
 
 ## 7i. IAS — https://www.ias.edu/ (Institute for Advanced Study, Princeton, 1930 — Einstein)
@@ -206,7 +206,7 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 - **6. LeanCopilot** `github.com/lean-dojo/LeanCopilot` — In-Lean LLM tactics (`llm_tac`/`suggest_tactic`) inside `lake build`. Action: add to `hammerNames` (§1) alongside `grind`/`aesop` as `PROVER_COPILOT=1`.
 - **7. Moogle + SorryDB + Lean Workbench** `moogle.ai` `github.com/austinletson/SorryDB` (15k sorries) `github.com/cmu-l3/lean-workbench` — Neural Mathlib search beyond keyword `retrieval.py`/`Loogle` (§7c) + sorry mining + standardized Dojo harness. Action: `Moogle` as `retrieval.py` online fallback (§7), `SorryDB` as `benchmark/` source.
 - **8. HOL Light** `cl.cam.ac.uk/~jrh13/hol-light` — Last major HOL family missing (Rocq/Isabelle/Metamath done §§7n/p/o). Flyspeck origin, `REAL_ARITH`/`CONV` inspire `prover_search:93`. Lightweight OCaml kernel for Comparator diff-testing (§4).
-- **9. arXiv cs.AI/cs.LO/math.LO** `arxiv.org/list/cs.AI/recent` — Daily SOTA feed (DeepSeek/InternLM/Qwen). LEAN_SYNC only tracks 2 IDs (§7d/f). Action: weekly `PROPOSALS.md` scan, add to `GUIDE.md` research loop.
+- **9. arXiv cs.AI/cs.LO/math.LO** `arxiv.org/list/cs.AI/recent` — Daily SOTA feed (DeepSeek/InternLM/Qwen). LEAN_SYNC only tracks 2 IDs (§7d/f). Action: weekly scan, add to the research loop.
 - **10. PIMS + IPAM/IMSI/IASM** `pims.math.ca` `ipam.ucla.edu` `imsi.institute` `iasm.edu.cn` — Remaining NSF/Intl institutes beyond SLMath/IAS/AIM/ICERM/Fields/Simons/Clay (§§7g-j,l,m). All run AI-for-Math workshops 2026-27 mirroring AxIOM 2027. Action: benchmark sourcing for `gen_problems.py`.
 
 ## 7u. Research Papers — Lean 4 Autoformalization SOTA Jan 2025-Jan 2026 (UVA breakthrough list)
@@ -229,7 +229,7 @@ Source: `cs.virginia.edu/~rmw7my/Courses/AgenticAISpring2026/Major Breakthroughs
 | **DeepSeek-Prover V1** | DeepSeek | 46.3% MiniF2F 52% cum, FIMO 5/148 (8M synth) | 2024-05 | `arxiv 2405.14333` |
 
 - Added value: tracks RL (`GRPO/RMaxTS`), subgoal decomposition, critic/prover loop, cold-start synthetic 8M — directly informs `plan.py` + `synth_lean.py` + `loop.py` RLPAF upgrade.
-- All papers TODO: add to `PROPOSALS.md` training recipe; monitor `arxiv cs.AI/cs.LO` weekly.
+- All papers TODO: fold into a training recipe; monitor `arxiv cs.AI/cs.LO` weekly.
 
 ## 7v. Exams/Contests — AMC/AIME/IMO/MATH/Putnam/FrontierMath/FIMO/ProofNet/College
 
@@ -253,8 +253,8 @@ Source: miniF2F (488 problems: AMC 12 45+45, AIME 15+15, IMO 20+20, MATH Level 1
 
 - **What it is:** Minimalist terminal coding agent (`tau-ai` PyPI, Python 3.12+ `uv`/`pipx`), `tau_coding → tau_agent → tau_ai` layers (`AgentHarness` brain + `CodingSession` + TUI). Event contract (`tau_agent` typed events), tools as typed async functions, durable JSONL sessions `~/.tau/sessions/`, Textual TUI + print mode `-p`.
 - **Recent (2026-08-20):** `tau_coding/rpc.py` 798 lines (Phase 28 RPC, Pi-compatible interchangeable frontends #613/#616) + `tests/test_rpc.py` 453 lines, `cli.py` + `session.py` updates, `37a9e43` vs our clone `aec16bb` → `37a9e43` (pulled).
-- **Relevance:** `lean-prover` is **Tau port** (`PORTING.md` Batches 4-6 DONE: `paths.py`/`context_window.py`/`session_usage.py`/`reload.py`/`thinking.py`/`diagnostics.py`/`rendering.py` etc). Our `agent/` mirrors `tau_agent`/`tau_coding` patterns (slash commands, compaction, themes, MCP-like tools). Next port candidate: `rpc.py` (Pi/Tau interchangeable RPC) → potential `agent/rpc.py` for `prover mcp` enhancement (currently `mcp.py:156` JSON-RPC 2025-03-26).
-- **No immediate code action** — track as upstream harness; `PORTING.md` deferred list already documents skipped surfaces (`tools.py` 1215, `skills.py` etc).
+- **Relevance:** `lean-prover` is **Tau port** (Batches 4-6 DONE: `paths.py`/`context_window.py`/`session_usage.py`/`reload.py`/`thinking.py`/`diagnostics.py`/`rendering.py` etc). Our `agent/` mirrors `tau_agent`/`tau_coding` patterns (slash commands, compaction, themes, MCP-like tools). Next port candidate: `rpc.py` (Pi/Tau interchangeable RPC) → potential `agent/rpc.py` for `prover mcp` enhancement (currently `mcp.py:156` JSON-RPC 2025-03-26).
+- **No immediate code action** — track as upstream harness; skipped surfaces (`tools.py`-scale tooling, skills) stay deferred.
 
 ## 7c. Mathlib Community — https://leanprover-community.github.io/
 
@@ -262,7 +262,7 @@ Source: miniF2F (488 problems: AMC 12 45+45, AIME 15+15, IMO 20+20, MATH Level 1
   `aesop`, `group`/`abel`/`noncomm_ring`, `field_simp`/`ring`/`ring_nf`, `gcongr`, `polyrith`, `positivity`, `push`/`push_neg`, `zify`/`qify`/`rify`, `norm_cast`/`norm_num`, `nlinarith`, `order`, `measurability`/`continuity`. Action: extend `hammerNames` with `grind`, `aesop`, `polyrith`, `positivity` behind `PROVER_EXTRA_HAMMERS`.
 - **Search** (`#loogle`, `#leansearch`, `#search`, `#statesearch`, `LeanSearchClient`): `loogle.lean-lang.org/json` finds lemmas by pattern (`?a -> ?b`). Repo has offline keyword `retrieval.py`; add online `agent/loogle.py` with `LOOGLE_API_URL` fallback (env `LEANSEARCHCLIENT_LOOGLE_API_URL`), mirrors `7. Distribution`.
 - **Library overview** (`mathlib-overview.html` / `undergrad.html` / `100.html` / `theories/*.html`): mathlib covers category theory → number theory → analysis → probability → geometry → combinatorics (1M+ lines). Validates 100-problem tiers (trivial/easy/medium/hard) align with undergrad topics. Use for `benchmark/gen_problems.py` template expansion (42 templates → undergrad-mirrored).
-- **Contribution pipeline** (`contribute/index.html`, `queueboard`, `mathlib_stats.html`): naming/style/commit conventions for future `ProverSupport` upstream PR; already deferred in `PROPOSALS.md:189`.
+- **Contribution pipeline** (`contribute/index.html`, `queueboard`, `mathlib_stats.html`): naming/style/commit conventions for future `ProverSupport` upstream PR; already deferred.
 - **Papers/Projects** (`papers.html`, `lean_projects.html`, `liquid`, `perfectoid`, `sphere-eversion`, `FLT`): same as Lean.org use-cases §6 — reinforce Comparator/FLT long-proof model.
 - **Glossary / MWE / Did-you-prove-it** (`glossary.html`, `mwe.html`, `did_you_prove_it.html`): add to `GUIDE.md` onboarding.
 
@@ -276,7 +276,7 @@ Source: miniF2F (488 problems: AMC 12 45+45, AIME 15+15, IMO 20+20, MATH Level 1
 
 ## 9. Acceptance (deferred)
 
-- `lake build` green on v4.34, `hammerNames` includes `grind`, `prover_finish` solves front-page examples, `prover lean-baseline --tactic grind` ≥ `prover_search` (56/100) on 100-problem set, `pytest tests/` green, `PROPOSALS-LEAN.md` L1-L3 notes updated.
+- `lake build` green on v4.34, `hammerNames` includes `grind`, `prover_finish` solves front-page examples, `prover lean-baseline --tactic grind` ≥ `prover_search` (56/100) on 100-problem set, `pytest tests/` green.
 - No live-model claims until endpoint serves `/chat/completions`.
 
 ## 10. References
