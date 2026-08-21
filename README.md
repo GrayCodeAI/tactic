@@ -11,7 +11,7 @@ session resume/branching, history compaction, theming, best-of-N search,
 local Mathlib retrieval, autoformalization, synthetic data tooling.
 Current best: **Qwen3.8-27B on Mathlib v4.20.0 scores 68/100**
 (trivial 20/20, easy 23/30, medium 21/30, hard 4/20), $0 cost (free HF endpoint).
-Public leaderboard: **https://lean-prover.github.io/lean-prover/**
+Live leaderboard + org site: **http://100.96.13.61:8899** (self-hosted on Tailscale, repo `lean-prover-web`).
 
 ## Setup
 
@@ -104,7 +104,8 @@ prover prove "..." --output transcript   # colored step transcript
 # Local leaderboard: run a subset and record the score
 prover leaderboard --run --problems benchmark/trivial.json --name my-model
 prover leaderboard --show
-# Public board: https://lean-prover.github.io/lean-prover/ (deploys via GitHub Pages on push)
+# Live board: http://100.96.13.61:8899 (self-hosted; leaderboard.json is
+# served by that site — keep it updated via `prover leaderboard --run`)
 
 # Use lean-prover from any MCP client (Claude, opencode, Cursor, …)
 prover mcp    # JSON-RPC tools: prove_theorem, benchmark_score, problems
@@ -223,8 +224,7 @@ agent/              the agent (Python)
   synth_lean.py     Lean-proved corpus JSONL writer (prover synth-lean)
 benchmark/          fixed theorem set + runner + import_standard.py + merge_reports.py
 tests/              pytest suite (379 tests)
-leaderboard.json    local score history (prover leaderboard)
-site/               public leaderboard site (GitHub Pages)
+leaderboard.json    local score history (prover leaderboard; served by lean-prover-web)
 ```
 
 ## Roadmap
@@ -235,7 +235,7 @@ site/               public leaderboard site (GitHub Pages)
 - [x] Proof trace logging + cost tracking
 - [x] Goal-state feedback via Lean LSP (`getInteractiveGoals`)
 - [x] MCP server wrapper (`prover mcp`)
-- [x] Leaderboard (local: `prover leaderboard`; public site in `site/`)
+- [x] Leaderboard (local: `prover leaderboard`; live board at http://100.96.13.61:8899)
 - [x] TUI: custom prove, session replay, parallel workers, Errors panel
 - [x] Clipboard (tau port: pyperclip + OSC-52 fallback, selection-aware)
 - [x] Slash commands + completions (tau pattern, 21 built-ins) + ctrl+k palette
@@ -251,7 +251,7 @@ site/               public leaderboard site (GitHub Pages)
 - [x] `/reload` resource change summary (problems/themes/prompts before→after)
 - [x] Thinking levels, structured failure log, `--output` renderers, `prover usage` CLI (tau port)
 - [x] Results post + public leaderboard (see leaderboard.json)
-- [x] Public leaderboard site (`site/`, GitHub Pages — updates on every push to leaderboard.json)
+- [x] Live leaderboard site (self-hosted `lean-prover-web`, refreshed from `leaderboard.json`)
 - [x] Best-of-N search (`--n-attempts`, temperature ramp, first-proof-wins)
 - [x] Local Mathlib lemma retrieval (`PROVER_RETRIEVE=1`, ~150k-signature keyword index)
 - [x] Per-difficulty model/temperature/step routing (`PROVER_MODEL_<TIER>` table)

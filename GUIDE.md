@@ -278,7 +278,7 @@ attempts so it doesn't repeat the same dead ends.
 - [x] Slash commands (`/help` `/prove` `/branch <id> [turn]` …, tau pattern)
 - [x] Session resume + branching (index.jsonl, prove --resume from, branch_at)
 - [x] History compaction (failed-attempts summary, tau memory model)
-- [x] Public leaderboard (https://lean-prover.github.io/lean-prover/, GitHub Pages from site/)
+- [x] Live leaderboard (http://100.96.13.61:8899, self-hosted from lean-prover-web / leaderboard.json)
 
 
 ---

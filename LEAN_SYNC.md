@@ -64,7 +64,7 @@ Status: **COLLECTED — NOT YET IMPLEMENTED**. Implement only when user says "im
 - Actions:
   - Publish `ProverSupport` to Reservoir (`lean/lakefile.toml` `reservoir` entry). — PENDING
   - Add `loogle` query helper `agent/loogle.py` (offline keyword → online fallback, `LOOGLE_API_URL` env, `moogle.ai` future). — DONE `agent/loogle.py` + `mcp.py:loogle_search` tool
-  - Docs site via `Verso` (aligns with `site/` GitHub Pages). — PENDING
+  - Docs site via `Verso` (aligns with self-hosted `lean-prover-web`). — PENDING
   - Tau RPC inspiration: `mcp.py` enhanced with `validate_proof` + `loogle_search` tools (Tau `rpc.py` 798 lines Phase 28, Pi-compatible) — DONE lightweight port.
 
 ## 7b. Mathlib Initiative — https://mathlib-initiative.org/
