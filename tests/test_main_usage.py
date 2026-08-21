@@ -87,3 +87,58 @@ def test_usage_cli_missing_session(monkeypatch, tmp_path, capsys) -> None:
     rc = main.cmd_usage(_ns(id="nope"))
     assert rc == 1
     assert "session not found" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- prover ask
+
+
+def _fake_result(proved: bool = True):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        proved=proved,
+        steps=3,
+        seconds=2.5,
+        total_tokens=150,
+        total_prompt_tokens=100,
+        total_completion_tokens=50,
+        estimated_cost_usd=0.000123,
+        session_path="/x/s.jsonl",
+        proof="by norm_num" if proved else None,
+    )
+
+
+def test_ask_writes_json_to_stdout(monkeypatch, capsys) -> None:
+    calls: list[object] = []
+
+    def fake_prove(*a, **kw):
+        calls.append((a, kw))
+        return _fake_result(proved=True)
+
+    monkeypatch.setattr(main, "prove", fake_prove)
+    rc = main.cmd_ask(_ns(statement="theorem t : 1+1=2 := by norm_num",
+                          max_steps=20, no_goal_feedback=False, no_record=False,
+                          full_file=False, adaptive_steps=False))
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out)
+    assert payload["proved"] is True
+    assert payload["steps"] == 3
+    assert payload["proof"] == "by norm_num"
+    assert '"proved": true' in out
+
+
+def test_ask_human_prose_to_stderr(monkeypatch, capsys) -> None:
+    def fake_prove(*a, **kw):
+        return _fake_result(proved=False)
+
+    monkeypatch.setattr(main, "prove", fake_prove)
+    rc = main.cmd_ask(_ns(statement="t", max_steps=20, no_goal_feedback=False,
+                          no_record=False, full_file=False, adaptive_steps=False))
+    captured = capsys.readouterr()
+    # stdout is a single clean JSON line
+    assert "\n".join(captured.out.splitlines()[1:]) == ""
+    json.loads(captured.out)
+    # prose goes to stderr
+    assert "proved=False" in captured.err
+    assert rc == 1

@@ -472,6 +472,43 @@ def cmd_leaderboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ask(args: argparse.Namespace) -> int:
+    """Single theorem request, script-friendly.
+
+    fx's ``fx ask`` contract: non-interactive by default, JSON output stays on
+    stdout (parseable), any human prose goes to stderr so stdout stays clean.
+    """
+    import json as _json
+
+    r = prove(
+        args.statement,
+        max_steps=args.max_steps,
+        goal_feedback=not args.no_goal_feedback,
+        record_session=not args.no_record,
+        full_file=args.full_file,
+        adaptive_steps=bool(getattr(args, "adaptive", False)),
+    )
+    payload = {
+        "proved": r.proved,
+        "steps": r.steps,
+        "seconds": round(r.seconds, 1),
+        "tokens": r.total_tokens,
+        "prompt_tokens": r.total_prompt_tokens,
+        "completion_tokens": r.total_completion_tokens,
+        "cost_usd": round(r.estimated_cost_usd, 6),
+        "session": r.session_path,
+        "proof": r.proof if r.proved else None,
+    }
+    print(_json.dumps(payload, ensure_ascii=False))
+    # Human prose never pollutes stdout when --json is being consumed.
+    print(
+        f"ask: proved={r.proved} steps={r.steps} time={r.seconds:.1f}s "
+        f"tokens={r.total_tokens} cost≈${r.estimated_cost_usd:.6f}",
+        file=sys.stderr,
+    )
+    return 0 if r.proved else 1
+
+
 def cli(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(
         prog="prover",
@@ -496,6 +533,15 @@ def cli(argv: list[str] | None = None) -> None:
     p.add_argument("--output", choices=["text", "json", "transcript"], default="text",
                    help="output mode: text (default summary), json event stream, or transcript")
     p.set_defaults(fn=cmd_prove)
+
+    a = sub.add_parser("ask", help="single theorem request, JSON on stdout (script-friendly)")
+    a.add_argument("statement", help="Lean theorem statement (with proof or sorry)")
+    a.add_argument("--max-steps", type=int, default=20)
+    a.add_argument("--full-file", action="store_true")
+    a.add_argument("--adaptive", action="store_true")
+    a.add_argument("--no-goal-feedback", action="store_true")
+    a.add_argument("--no-record", action="store_true")
+    a.set_defaults(fn=cmd_ask)
 
     b = sub.add_parser("bench", help="run the benchmark suite")
     b.add_argument("--problems", default="benchmark/problems.json")

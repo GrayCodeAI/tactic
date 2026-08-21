@@ -319,9 +319,9 @@ def test_status_shows_thinking_level(registry, session) -> None:
 
 
 def test_registry_command_count(registry) -> None:
-    """33 built-ins (24 prover + 9 Tau-parity: tree, fork, login, logout,
+    """34 built-ins (25 prover + 9 Tau-parity: tree, fork, login, logout,
     skills, contexts, tools, stats, update)."""
-    assert len(registry.list_commands()) == 33
+    assert len(registry.list_commands()) == 34
 
 
 def test_command_result_defaults(registry, session) -> None:
@@ -381,3 +381,71 @@ def test_new_refuses_while_running(registry, session) -> None:
     result = registry.execute(_Run(session._tmp_path, session._sessions), "/new")
     assert result.new_session_requested is False
     assert "stop" in (result.message or "")
+
+
+# --------------------------------------------------------------------------- /permissions
+
+
+def test_permissions_no_args_shows_usage(registry, session) -> None:
+    result = registry.execute(session, "/permissions")
+    assert result.permissions_requested is True
+    assert result.permissions_action is None
+    assert "Usage" in (result.message or "")
+
+
+def test_permissions_list(registry, session) -> None:
+    result = registry.execute(session, "/permissions list")
+    assert result.permissions_requested is True
+    assert result.permissions_action == "list"
+
+
+def test_permissions_mode_valid(registry, session) -> None:
+    result = registry.execute(session, "/permissions mode yolo")
+    assert result.permissions_requested is True
+    assert result.permissions_action == "mode"
+    assert result.permissions_mode == "yolo"
+
+
+def test_permissions_mode_invalid(registry, session) -> None:
+    result = registry.execute(session, "/permissions mode turbo")
+    assert result.permissions_action is None
+    assert "Invalid mode" in (result.message or "")
+
+
+def test_permissions_revoke(registry, session) -> None:
+    result = registry.execute(session, "/permissions revoke abc123")
+    assert result.permissions_action == "revoke"
+    assert result.permissions_tool == "abc123"
+
+
+def test_permissions_revoke_needs_id(registry, session) -> None:
+    result = registry.execute(session, "/permissions revoke")
+    assert result.permissions_action is None
+
+
+def test_permissions_remember_allow(registry, session) -> None:
+    result = registry.execute(session, "/permissions remember allow prove_theorem")
+    assert result.permissions_action == "remember"
+    assert result.permissions_tool == "prove_theorem"
+    assert result.permissions_allow is True
+    assert result.permissions_pattern == ""
+
+
+def test_permissions_remember_deny_with_pattern(registry, session) -> None:
+    result = registry.execute(session, "/permissions remember deny prove_theorem hard")
+    assert result.permissions_action == "remember"
+    assert result.permissions_tool == "prove_theorem"
+    assert result.permissions_allow is False
+    assert result.permissions_pattern == "hard"
+
+
+def test_permissions_remember_bad_verb(registry, session) -> None:
+    result = registry.execute(session, "/permissions remember maybe prove_theorem")
+    assert result.permissions_action is None
+    assert "Usage" in (result.message or "")
+
+
+def test_permissions_alias_perm(registry, session) -> None:
+    result = registry.execute(session, "/perm list")
+    assert result.permissions_requested is True
+    assert result.permissions_action == "list"

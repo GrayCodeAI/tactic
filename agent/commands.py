@@ -93,6 +93,12 @@ class CommandResult:
     contexts_requested: bool = False             # /contexts
     tools_requested: bool = False                # /tools
     update_check_requested: bool = False         # /update
+    permissions_requested: bool = False          # /permissions — ACL manager
+    permissions_action: str | None = None        #   list | remember | revoke | mode
+    permissions_tool: str | None = None          #   tool name (remember)
+    permissions_pattern: str = ""                #   argument pattern (remember)
+    permissions_allow: bool | None = None        #   allow (True) or deny (False) (remember)
+    permissions_mode: str | None = None          #   ask|auto|yolo (mode)
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +347,12 @@ def create_default_command_registry() -> CommandRegistry:
         usage="/update", handler=_update_command,
         search_terms=("upgrade", "version"),
     ))
+    registry.register(SlashCommand(
+        name="permissions", description="Manage per-tool permission rules (ACL).",
+        usage="/permissions [list|remember|revoke|mode] ...",
+        handler=_permissions_command,
+        aliases=("perm",), search_terms=("acl", "allow", "deny", "approve"),
+    ))
     return registry
 
 
@@ -534,6 +546,57 @@ def _stats_command(context: CommandContext) -> CommandResult:
 
 def _update_command(context: CommandContext) -> CommandResult:
     return CommandResult(handled=True, update_check_requested=True)
+
+
+_PERMISSION_MODES = ("ask", "auto", "yolo")
+
+
+def _permissions_command(context: CommandContext) -> CommandResult:
+    args = context.args.strip()
+    if not args:
+        return CommandResult(
+            handled=True, permissions_requested=True,
+            message="Usage: /permissions list | remember <allow|deny> <tool> [pattern] "
+                    "| revoke <id> | mode <ask|auto|yolo>",
+        )
+    verb, rest = (args.split(None, 1) + ["", ""])[:2]
+    verb = verb.lower()
+    if verb == "list":
+        return CommandResult(handled=True, permissions_requested=True,
+                             permissions_action="list")
+    if verb == "mode":
+        mode = rest.strip().lower()
+        if mode not in _PERMISSION_MODES:
+            return CommandResult(handled=True, permissions_requested=True,
+                                 message=f"Invalid mode: {mode}. "
+                                         f"Available: {', '.join(_PERMISSION_MODES)}")
+        return CommandResult(handled=True, permissions_requested=True,
+                             permissions_action="mode", permissions_mode=mode)
+    if verb == "revoke":
+        rid = rest.strip()
+        if not rid:
+            return CommandResult(handled=True, permissions_requested=True,
+                                 message="Usage: /permissions revoke <rule-id>")
+        return CommandResult(handled=True, permissions_requested=True,
+                             permissions_action="revoke", permissions_tool=rid)
+    if verb == "remember":
+        # remember <allow|deny> <tool> [pattern...]
+        allow_txt, tail = (rest.split(None, 1) + ["", ""])[:2]
+        if allow_txt.lower() not in ("allow", "deny"):
+            return CommandResult(handled=True, permissions_requested=True,
+                                 message="Usage: /permissions remember <allow|deny> <tool> [pattern]")
+        tool, pattern = (tail.split(None, 1) + ["", ""])[:2]
+        if not tool:
+            return CommandResult(handled=True, permissions_requested=True,
+                                 message="Usage: /permissions remember <allow|deny> <tool> [pattern]")
+        return CommandResult(
+            handled=True, permissions_requested=True, permissions_action="remember",
+            permissions_tool=tool, permissions_pattern=pattern or "",
+            permissions_allow=(allow_txt.lower() == "allow"),
+            message=f"Remembered {allow_txt.lower()} for tool '{tool}'.",
+        )
+    return CommandResult(handled=True, permissions_requested=True,
+                         message=f"Unknown /permissions verb: {verb}")
 
 
 def _leaderboard_command(context: CommandContext) -> CommandResult:
