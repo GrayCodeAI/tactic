@@ -51,7 +51,7 @@ files, the god-class TUI, the fat CLI dispatcher).
 | 1 | `loop.py` was a fragile import-shim (try/except swallow + LEAN_DIR re-patch) | `loop.py` | **done** (facade, `3f12704`) |
 | 2 | God-class TUI | `tui.py` 2 280 LOC | open |
 | 3 | Fat CLI dispatcher | `main.py` 725 LOC | open |
-| 4 | Engine reached ad hoc by 8 modules | `coding_session`, `coding_tools`, `loop`, `main`, `rpc`, `system_prompt`, `tui_adapter`, `tui` | open (facade thin end) |
+| 4 | Engine reached ad hoc by 7 modules | `coding_session`, `coding_tools`, `loop`, `main`, `rpc`, `system_prompt`, `tui` | open (facade thin end) |
 | 5 | ACL gate only on MCP | `mcp.py` | **done** (local loop gate, next commit) |
 
 ---
